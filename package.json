@@ -1,0 +1,91 @@
+{
+  "name": "keepitreel",
+  "version": "0.0.0",
+  "description": "Building blocks for automated short-form video: Whisper transcription, ffmpeg reel rendering, and publishing to YouTube Shorts, Facebook, Instagram and TikTok.",
+  "type": "module",
+  "exports": {
+    "./transcribe": {
+      "types": "./dist/transcribe/index.d.ts",
+      "import": "./dist/transcribe/index.js",
+      "require": "./dist/transcribe/index.cjs"
+    },
+    "./video": {
+      "types": "./dist/video/index.d.ts",
+      "import": "./dist/video/index.js",
+      "require": "./dist/video/index.cjs"
+    },
+    "./publish": {
+      "types": "./dist/publish/index.d.ts",
+      "import": "./dist/publish/index.js",
+      "require": "./dist/publish/index.cjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "transcribe": ["./dist/transcribe/index.d.ts"],
+      "video": ["./dist/video/index.d.ts"],
+      "publish": ["./dist/publish/index.d.ts"]
+    }
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.cjs",
+    "dist/**/*.d.ts",
+    "dist/**/*.d.cts",
+    "python/transcribe.py"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "verify": "npm run typecheck && npm test && npm run build",
+    "preversion": "npm run verify",
+    "postversion": "git push --follow-tags",
+    "prepublishOnly": "npm run verify"
+  },
+  "keywords": [
+    "reels",
+    "shorts",
+    "ffmpeg",
+    "whisper",
+    "subtitles",
+    "youtube",
+    "instagram",
+    "tiktok"
+  ],
+  "author": "Fariz Prawira <farizprawira94@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FarizPrawira/keepitreel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FarizPrawira/keepitreel/issues"
+  },
+  "homepage": "https://github.com/FarizPrawira/keepitreel#readme",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "opentype.js": "^1.3.5"
+  },
+  "peerDependencies": {
+    "ffmpeg-static": "^5.3.0"
+  },
+  "peerDependenciesMeta": {
+    "ffmpeg-static": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/opentype.js": "^1.3.8",
+    "@vitest/coverage-v8": "^4.1.6",
+    "ffmpeg-static": "^5.3.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.6"
+  }
+}

@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      # ffmpeg-static's Linux binary has no drawtext filter, so the render tests use Ubuntu's
+      # ffmpeg, which ffmpeg-static returns when FFMPEG_BIN points at it.
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npm ci
+      - run: npm run verify
+        env:
+          FFMPEG_BIN: /usr/bin/ffmpeg

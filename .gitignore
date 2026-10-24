@@ -1,0 +1,36 @@
+# Dependencies & build output
+node_modules
+dist
+coverage
+*.tsbuildinfo
+
+/docs
+
+# Editors / IDEs
+.idea
+.vscode
+*.swp
+*.swo
+.vs
+.claude
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & runtime
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Tool caches
+.eslintcache
+.cache
+.turbo

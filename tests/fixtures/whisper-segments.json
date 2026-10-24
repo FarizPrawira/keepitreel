@@ -1,0 +1,105 @@
+[
+ {
+  "words": [
+   {
+    "start": 0,
+    "end": 0.26,
+    "word": " Good"
+   },
+   {
+    "start": 0.26,
+    "end": 0.26,
+    "word": " old."
+   },
+   {
+    "start": 1.02,
+    "end": 1.58,
+    "word": " Good"
+   },
+   {
+    "start": 1.58,
+    "end": 2.04,
+    "word": " intentions"
+   },
+   {
+    "start": 2.04,
+    "end": 2.42,
+    "word": " are"
+   },
+   {
+    "start": 2.42,
+    "end": 2.52,
+    "word": " not"
+   },
+   {
+    "start": 2.52,
+    "end": 2.82,
+    "word": " enough."
+   },
+   {
+    "start": 3.62,
+    "end": 4.06,
+    "word": " They've"
+   },
+   {
+    "start": 4.06,
+    "end": 4.32,
+    "word": " never"
+   },
+   {
+    "start": 4.32,
+    "end": 4.9,
+    "word": " put"
+   },
+   {
+    "start": 4.9,
+    "end": 5.02,
+    "word": " an"
+   },
+   {
+    "start": 5.02,
+    "end": 5.28,
+    "word": " onion"
+   },
+   {
+    "start": 5.28,
+    "end": 5.46,
+    "word": " in"
+   },
+   {
+    "start": 5.46,
+    "end": 5.56,
+    "word": " the"
+   },
+   {
+    "start": 5.56,
+    "end": 5.78,
+    "word": " soup"
+   },
+   {
+    "start": 5.78,
+    "end": 6.02,
+    "word": " yet."
+   }
+  ]
+ },
+ {
+  "words": [
+   {
+    "start": 6.02,
+    "end": 6.9,
+    "word": " You'll"
+   },
+   {
+    "start": 6.9,
+    "end": 6.98,
+    "word": " have"
+   },
+   {
+    "start": 6.98,
+    "end": 6.98,
+    "word": " to."
+   }
+  ]
+ }
+]

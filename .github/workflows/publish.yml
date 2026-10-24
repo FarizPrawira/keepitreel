@@ -1,0 +1,27 @@
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      # npm publish runs the tests through prepublishOnly. ffmpeg-static's Linux binary has no
+      # drawtext filter, so the render tests use Ubuntu's ffmpeg through FFMPEG_BIN.
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npm ci
+      - run: npm publish
+        env:
+          FFMPEG_BIN: /usr/bin/ffmpeg
