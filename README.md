@@ -196,7 +196,7 @@ Renders `start` to `end` of a clip as a 9:16 segment: the landscape picture sits
 |---|---|---|---|
 | `clipPath` | `string` | required | The source video |
 | `start`, `end` | `number` | required | Seconds into the clip |
-| `workDir` | `string` | required | Where the output and the text files ffmpeg reads go |
+| `workDir` | `string` | required | Where the output and the files ffmpeg reads go: the text, and the filter graph (`<name>.filter`), which keeps clips with hundreds of subtitle words within Windows' command-line limit |
 | `name` | `string` | required | The output's base name |
 | `subtitles` | `SubtitleChunk[]` | `[]` | From [`.subtitleChunks()`](#subtitlechunksoptions) |
 | `hook` | `{ band: { y, h, opacity }, lines, outSeconds }` | | A full-width ink band with text, up from the first frame, fading out `outSeconds` before the end |
