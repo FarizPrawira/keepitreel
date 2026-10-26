@@ -108,6 +108,8 @@ export interface PlacedWord {
   size: number;
   baseline: number;
   x: number;
+  /** While the word is spoken (clip-relative seconds), it is drawn in `color` instead. */
+  active?: { start: number; end: number; color: string };
 }
 
 /** One line of subtitles, shown from `start` to `end` (clip-relative seconds). */
@@ -123,8 +125,16 @@ export interface SubtitleOptions {
   duration: number;
   font: string;
   color: string;
-  /** Per-word font, color or text, such as a highlighted or blanked-out word. */
-  style?: (word: TimedWord) => { font?: string; color?: string; text?: string };
+  /**
+   * Per-word font, color or text, such as a highlighted or blanked-out word, and its own
+   * `activeColor` (`null` keeps the word's color while it is spoken).
+   */
+  style?: (word: TimedWord) => { font?: string; color?: string; text?: string; activeColor?: string | null };
+  /**
+   * Color of each word while it is spoken, karaoke style: from its start to the next word's
+   * start, so early end times leave no gap, and to the line's end for its last word.
+   */
+  activeColor?: string;
   /** @default 56 */
   size?: number;
   /**
@@ -305,7 +315,7 @@ export class Renderer {
    * further while it is wider than `maxWidth`.
    */
   subtitleChunks(options: SubtitleOptions): SubtitleChunk[] {
-    const { words, duration, font, color, style, size = 56, baseline = 1445, maxWords = 5, hold = 0.6, maxWidth = TEXT_WIDTH } = options;
+    const { words, duration, font, color, style, activeColor, size = 56, baseline = 1445, maxWords = 5, hold = 0.6, maxWidth = TEXT_WIDTH } = options;
     const styled = words.map((w) => ({ ...w, font, color, ...style?.(w) }));
     const space = this.textWidth(" ", font, size);
     const width = (ws: typeof styled) =>
@@ -347,27 +357,39 @@ export class Renderer {
       const next = groups[i + 1]?.[0];
       const holdEnd = Math.min(duration, last.end + hold);
       const end = next ? Math.min(next.start, holdEnd) : holdEnd;
+      const start = Math.max(0, first.start);
+      const lineEnd = Math.max(end, first.start + 0.1);
       let x = (WIDTH - width(group)) / 2;
-      const placed = group.map((w) => {
-        const word = { text: w.text, font: w.font, color: w.color, size, baseline, x };
+      const placed = group.map((w, j): PlacedWord => {
+        const word: PlacedWord = { text: w.text, font: w.font, color: w.color, size, baseline, x };
+        const spokenColor = w.activeColor === undefined ? activeColor : w.activeColor;
+        if (spokenColor) {
+          const from = Math.max(start, w.start);
+          const to = j < group.length - 1 ? group[j + 1]!.start : lineEnd;
+          word.active = { start: from, end: Math.max(from, to), color: spokenColor };
+        }
         x += this.textWidth(w.text, w.font, size) + space;
         return word;
       });
-      return { start: Math.max(0, first.start), end: Math.max(end, first.start + 0.1), words: placed };
+      return { start, end: lineEnd, words: placed };
     });
   }
 
   // Each word is its own drawtext so a word can take another color.
   private drawSubtitles(chunks: SubtitleChunk[], workDir: string, name: string): string[] {
     return chunks.flatMap((chunk, c) =>
-      chunk.words.map((word, w) =>
-        this.drawtext(
-          workDir,
-          `${name}-sub${c}-${w}.txt`,
-          word,
-          `y=${word.baseline}-ascent:borderw=3:bordercolor=${this.ink}@0.85:enable='between(t,${chunk.start.toFixed(3)},${chunk.end.toFixed(3)})'`,
-        ),
-      ),
+      chunk.words.flatMap((word, w) => {
+        const file = `${name}-sub${c}-${w}.txt`;
+        const look = `y=${word.baseline}-ascent:borderw=3:bordercolor=${this.ink}@0.85`;
+        const shown = `between(t,${chunk.start.toFixed(3)},${chunk.end.toFixed(3)})`;
+        if (!word.active) return [this.drawtext(workDir, file, word, `${look}:enable='${shown}'`)];
+        // Half-open, so no frame has the word in both colors.
+        const spoken = `gte(t,${word.active.start.toFixed(3)})*lt(t,${word.active.end.toFixed(3)})`;
+        return [
+          this.drawtext(workDir, file, word, `${look}:enable='${shown}*not(${spoken})'`),
+          this.drawtext(workDir, file, { ...word, color: word.active.color }, `${look}:enable='${spoken}'`),
+        ];
+      }),
     );
   }
 
@@ -377,7 +399,12 @@ export class Renderer {
    */
   async renderClip({ clipPath, start, end, tag, hook, hold = 0, subtitles = [], mute = [], loudness, workDir, name }: ClipOptions): Promise<string> {
     const duration = end - start + hold;
-    const subs = this.drawSubtitles(subtitles.map((c) => ({ ...c, start: c.start + hold, end: c.end + hold })), workDir, name);
+    const held = subtitles.map((c) => ({
+      start: c.start + hold,
+      end: c.end + hold,
+      words: c.words.map((w) => (w.active ? { ...w, active: { ...w.active, start: w.active.start + hold, end: w.active.end + hold } } : w)),
+    }));
+    const subs = this.drawSubtitles(held, workDir, name);
     const withSubs = (chain: string) => (subs.length ? `${chain},${subs.join(",")}` : chain);
     const out = hook ? "[pre]" : "[v]";
     const input = `[0:v]${hold ? `tpad=start_duration=${hold.toFixed(3)}:start_mode=clone,` : ""}${FILL_9_16}`;

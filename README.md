@@ -209,14 +209,15 @@ Renders `start` to `end` of a clip as a 9:16 segment: the landscape picture sits
 
 #### .subtitleChunks(options)
 
-Splits clip-relative words into one-line, centered chunks, breaking at sentence ends. A sentence longer than `maxWords` is cut into the fewest pieces that fit, differing by at most one word ("I heard you / were in town."): seven words become 4 + 3, and twenty-one become 5 + 4 + 4 + 4 + 4 rather than leaving one word over. A piece is split further while it is wider than `maxWidth`, so a word too wide to share a line gets one to itself. Returns an array of `{ start, end, words }`, where each word is placed with its `x`, `font`, `color` and `size`.
+Splits clip-relative words into one-line, centered chunks, breaking at sentence ends. A sentence longer than `maxWords` is cut into the fewest pieces that fit, differing by at most one word ("I heard you / were in town."): seven words become 4 + 3, and twenty-one become 5 + 4 + 4 + 4 + 4 rather than leaving one word over. A piece is split further while it is wider than `maxWidth`, so a word too wide to share a line gets one to itself. Returns an array of `{ start, end, words }`, where each word is placed with its `x`, `font`, `color` and `size`, plus `active: { start, end, color }` when `activeColor` is given.
 
 | Option | Type | Default | |
 |---|---|---|---|
 | `words` | `{ text, start, end }[]` | required | Clip-relative seconds |
 | `duration` | `number` | required | Length of the clip. No chunk stays up past it |
 | `font`, `color` | `string` | required | A font key and an ffmpeg color |
-| `style` | `(word) => { font?, color?, text? }` | | Per-word font, color or text, for a highlighted or blanked-out word |
+| `style` | `(word) => { font?, color?, text?, activeColor? }` | | Per-word font, color or text, for a highlighted or blanked-out word. Its `activeColor` overrides the option for that word, and `null` keeps the word's own color while it is spoken |
+| `activeColor` | `string` | | Karaoke style: each word takes this color while it is spoken, from its start to the next word's start (the line's end for the last word), so Whisper's early end times leave no gap. Without it words keep their color the whole line |
 | `size` | `number` | `56` | |
 | `baseline` | `number` | `1445` | Below the picture of a 4:3 film and above the apps' bottom UI zone |
 | `maxWords` | `number` | `5` | |

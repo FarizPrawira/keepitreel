@@ -96,6 +96,38 @@ describe("Renderer", () => {
       });
     });
 
+    describe("when given an active color", () => {
+      it("should color each word from its start to the next word's start, and the last to the line's end", () => {
+        const [line] = renderer.subtitleChunks({ words: timed("Go home now."), duration: 10, font: "display", color: "white", activeColor: "amber" });
+        expect(line!.words.map((w) => w.active)).toEqual([
+          { start: 0, end: 0.3, color: "amber" },
+          { start: 0.3, end: 0.6, color: "amber" },
+          { start: 0.6, end: line!.end, color: "amber" },
+        ]);
+      });
+    });
+
+    describe("when given an active color and a style that opts one word out", () => {
+      it("should keep that word's color while it is spoken", () => {
+        const [line] = renderer.subtitleChunks({
+          words: timed("You look starving."),
+          duration: 5,
+          font: "display",
+          color: "white",
+          activeColor: "teal",
+          style: (w) => (w.text.startsWith("starving") ? { color: "amber", activeColor: null } : {}),
+        });
+        expect(line!.words.map((w) => w.active?.color)).toEqual(["teal", "teal", undefined]);
+      });
+    });
+
+    describe("when given no active color", () => {
+      it("should leave the words without an active window", () => {
+        const [line] = chunk(timed("Go home now."));
+        expect(line!.words.every((w) => w.active === undefined)).toBe(true);
+      });
+    });
+
     describe("when given a line too wide even under maxWords", () => {
       it("should split it further", () => {
         const wide = timed("Extraordinarily incomprehensibly uncharacteristically.");
@@ -219,6 +251,18 @@ describe("Renderer", () => {
         const file = await renderer.renderClip({ clipPath: source(), start: 0, end: 3.6, workDir: dir, name: "long", subtitles });
         expect(await renderer.probeSeconds(join(dir, file))).toBeCloseTo(3.6, 1);
         expect(readFileSync(join(dir, "long.filter"), "utf8").match(/drawtext=/g)).toHaveLength(400);
+      }, 60_000);
+    });
+
+    describe("when rendering a clip with an active color and a hold", () => {
+      it("should draw each word twice, its spoken window moved by the hold", async () => {
+        const subtitles = renderer.subtitleChunks({ words: timed("Watch this."), duration: 2, font: "display", color: "white", activeColor: "yellow" });
+        const file = await renderer.renderClip({ clipPath: source(), start: 0, end: 2, hold: 0.5, workDir: dir, name: "karaoke", subtitles });
+        const graph = readFileSync(join(dir, "karaoke.filter"), "utf8");
+        expect(await renderer.probeSeconds(join(dir, file))).toBeCloseTo(2.5, 1);
+        expect(graph.match(/drawtext=/g)).toHaveLength(4);
+        expect(graph).toContain("fontcolor=yellow");
+        expect(graph).toContain("enable='gte(t,0.500)*lt(t,0.800)'");
       }, 60_000);
     });
 
