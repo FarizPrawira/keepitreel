@@ -178,6 +178,11 @@ export interface ClipOptions {
   subtitles?: SubtitleChunk[];
   /** [start, end] windows (clip-relative seconds) where the sound is replaced by a beep. */
   mute?: [number, number][];
+  /**
+   * Target integrated loudness in LUFS (e.g. -14). The clip's sound is normalized to it
+   * before any beep is mixed in, so beeps stay at the same level in every clip.
+   */
+  loudness?: number;
 }
 
 function defaultFfmpeg(): string {
@@ -370,13 +375,14 @@ export class Renderer {
    * Renders `start` to `end` of a clip as a 9:16 segment, with optional tag, hook, subtitles
    * and beeps. Returns the file name in `workDir`.
    */
-  async renderClip({ clipPath, start, end, tag, hook, hold = 0, subtitles = [], mute = [], workDir, name }: ClipOptions): Promise<string> {
+  async renderClip({ clipPath, start, end, tag, hook, hold = 0, subtitles = [], mute = [], loudness, workDir, name }: ClipOptions): Promise<string> {
     const duration = end - start + hold;
     const subs = this.drawSubtitles(subtitles.map((c) => ({ ...c, start: c.start + hold, end: c.end + hold })), workDir, name);
     const withSubs = (chain: string) => (subs.length ? `${chain},${subs.join(",")}` : chain);
     const out = hook ? "[pre]" : "[v]";
     const input = `[0:v]${hold ? `tpad=start_duration=${hold.toFixed(3)}:start_mode=clone,` : ""}${FILL_9_16}`;
-    const sound = `[0:a]aresample=${SAMPLE_RATE}${hold ? `,adelay=${Math.round(hold * 1000)}:all=1` : ""}`;
+    // loudnorm outputs at 192 kHz, so the resample comes after it.
+    const sound = `[0:a]${loudness == null ? "" : `loudnorm=I=${loudness}:TP=-1.5:LRA=11,`}aresample=${SAMPLE_RATE}${hold ?`,adelay=${Math.round(hold * 1000)}:all=1` : ""}`;
     let video = `${withSubs(input)}${out}`;
     if (tag) {
       const { box, lines, delay = 0, outSeconds = 0, fade = true } = tag;

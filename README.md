@@ -203,6 +203,7 @@ Renders `start` to `end` of a clip as a 9:16 segment: the landscape picture sits
 | `tag` | `{ box: { x, y, w, h, opacity }, lines, delay?, outSeconds?, fade? }` | | An ink box with text that fades in after `delay` and out before the end. With `fade: false` it is up for the whole clip |
 | `hold` | `number` | `0` | Seconds the first frame is held, silent, before the clip plays. Subtitles and mute windows move with it |
 | `mute` | `[number, number][]` | `[]` | Clip-relative windows where the sound is replaced by a beep |
+| `loudness` | `number` | | Target loudness in LUFS, e.g. `-14`. The clip's sound is normalized to it before beeps are mixed in. Without it the sound is left as it is |
 
 `lines` are [text lines](#text-lines).
 
