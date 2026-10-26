@@ -410,9 +410,13 @@ export class Renderer {
         "[dry][beep]amix=inputs=2:normalize=0:duration=first[a]";
     }
 
+    // Each subtitle word is its own drawtext, so a long clip's graph can pass Windows' 32K
+    // command-line limit. ffmpeg reads it from a file instead.
+    const graph = `${name}.filter`;
+    writeFileSync(join(workDir, graph), `${video};${audio}`);
     const output = `${name}.mp4`;
     await this.run(
-      ["-ss", String(start), "-to", String(end), "-i", resolve(clipPath), "-filter_complex", `${video};${audio}`, "-map", "[v]", "-map", "[a]", ...OUTPUT_ARGS, output],
+      ["-ss", String(start), "-to", String(end), "-i", resolve(clipPath), "-filter_complex_script", graph, "-map", "[v]", "-map", "[a]", ...OUTPUT_ARGS, output],
       workDir,
     );
     return output;

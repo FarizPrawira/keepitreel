@@ -212,6 +212,16 @@ describe("Renderer", () => {
       }, 60_000);
     });
 
+    describe("when rendering a clip with hundreds of subtitle words", () => {
+      it("should render, with its filter graph read from a file in workDir", async () => {
+        const words = timed(Array.from({ length: 400 }, (_, i) => `word${i}.`).join(" "), 0, 0.009);
+        const subtitles = renderer.subtitleChunks({ words, duration: 3.6, font: "display", color: "white", maxWords: 1 });
+        const file = await renderer.renderClip({ clipPath: source(), start: 0, end: 3.6, workDir: dir, name: "long", subtitles });
+        expect(await renderer.probeSeconds(join(dir, file))).toBeCloseTo(3.6, 1);
+        expect(readFileSync(join(dir, "long.filter"), "utf8").match(/drawtext=/g)).toHaveLength(400);
+      }, 60_000);
+    });
+
     describe("when rendering a clip with a tag", () => {
       it("should make a 9:16 segment of the requested length", async () => {
         const file = await renderer.renderClip({
