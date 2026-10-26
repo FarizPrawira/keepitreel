@@ -125,8 +125,11 @@ export interface SubtitleOptions {
   duration: number;
   font: string;
   color: string;
-  /** Per-word font, color or text, such as a highlighted or blanked-out word. */
-  style?: (word: TimedWord) => { font?: string; color?: string; text?: string };
+  /**
+   * Per-word font, color or text, such as a highlighted or blanked-out word, and its own
+   * `activeColor` (`null` keeps the word's color while it is spoken).
+   */
+  style?: (word: TimedWord) => { font?: string; color?: string; text?: string; activeColor?: string | null };
   /**
    * Color of each word while it is spoken, karaoke style: from its start to the next word's
    * start, so early end times leave no gap, and to the line's end for its last word.
@@ -359,10 +362,11 @@ export class Renderer {
       let x = (WIDTH - width(group)) / 2;
       const placed = group.map((w, j): PlacedWord => {
         const word: PlacedWord = { text: w.text, font: w.font, color: w.color, size, baseline, x };
-        if (activeColor) {
+        const spokenColor = w.activeColor === undefined ? activeColor : w.activeColor;
+        if (spokenColor) {
           const from = Math.max(start, w.start);
           const to = j < group.length - 1 ? group[j + 1]!.start : lineEnd;
-          word.active = { start: from, end: Math.max(from, to), color: activeColor };
+          word.active = { start: from, end: Math.max(from, to), color: spokenColor };
         }
         x += this.textWidth(w.text, w.font, size) + space;
         return word;

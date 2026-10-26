@@ -216,7 +216,7 @@ Splits clip-relative words into one-line, centered chunks, breaking at sentence 
 | `words` | `{ text, start, end }[]` | required | Clip-relative seconds |
 | `duration` | `number` | required | Length of the clip. No chunk stays up past it |
 | `font`, `color` | `string` | required | A font key and an ffmpeg color |
-| `style` | `(word) => { font?, color?, text? }` | | Per-word font, color or text, for a highlighted or blanked-out word |
+| `style` | `(word) => { font?, color?, text?, activeColor? }` | | Per-word font, color or text, for a highlighted or blanked-out word. Its `activeColor` overrides the option for that word, and `null` keeps the word's own color while it is spoken |
 | `activeColor` | `string` | | Karaoke style: each word takes this color while it is spoken, from its start to the next word's start (the line's end for the last word), so Whisper's early end times leave no gap. Without it words keep their color the whole line |
 | `size` | `number` | `56` | |
 | `baseline` | `number` | `1445` | Below the picture of a 4:3 film and above the apps' bottom UI zone |

@@ -107,6 +107,20 @@ describe("Renderer", () => {
       });
     });
 
+    describe("when given an active color and a style that opts one word out", () => {
+      it("should keep that word's color while it is spoken", () => {
+        const [line] = renderer.subtitleChunks({
+          words: timed("You look starving."),
+          duration: 5,
+          font: "display",
+          color: "white",
+          activeColor: "teal",
+          style: (w) => (w.text.startsWith("starving") ? { color: "amber", activeColor: null } : {}),
+        });
+        expect(line!.words.map((w) => w.active?.color)).toEqual(["teal", "teal", undefined]);
+      });
+    });
+
     describe("when given no active color", () => {
       it("should leave the words without an active window", () => {
         const [line] = chunk(timed("Go home now."));
