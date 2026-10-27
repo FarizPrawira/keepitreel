@@ -339,6 +339,29 @@ describe("Renderer", () => {
       }, 60_000);
     });
 
+    describe("when rendering a clip with loudness and a beep in its last 3 seconds", () => {
+      it("should silence the clip's own sound under the beep", async () => {
+        const tone = join(dir, "tone.mp4");
+        await renderer.run([
+          "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30:duration=4",
+          "-f", "lavfi", "-i", "sine=frequency=2000:duration=4",
+          "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", tone,
+        ]);
+        const file = await renderer.renderClip({ clipPath: tone, start: 0, end: 4, loudness: -14, mute: [[2, 2.5]], workDir: dir, name: "late-beep" });
+        // The highpass keeps the 2 kHz tone and drops the lower beep.
+        const level = (from: number) => {
+          const { stderr } = spawnSync(
+            renderer.ffmpegPath,
+            ["-hide_banner", "-ss", String(from), "-t", "0.3", "-i", join(dir, file), "-af", "highpass=f=1200,highpass=f=1200,volumedetect", "-f", "null", "-"],
+            { encoding: "utf8" },
+          );
+          return Number(/mean_volume: (-?[\d.]+) dB/.exec(stderr)?.[1]);
+        };
+        expect(level(1)).toBeGreaterThan(-30);
+        expect(level(2.1)).toBeLessThan(-40);
+      }, 60_000);
+    });
+
     describe("when rendering a clip with hundreds of subtitle words", () => {
       it("should render, with its filter graph read from a file in workDir", async () => {
         const words = timed(Array.from({ length: 400 }, (_, i) => `word${i}.`).join(" "), 0, 0.009);
