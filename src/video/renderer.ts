@@ -76,6 +76,21 @@ export interface TextLine {
   rise?: number;
   /** [from, to) seconds the line is shown. */
   window?: [number, number];
+  /** A box behind the text, `border` px around it (or [vertical, horizontal]). */
+  box?: { color: string; border: number | [number, number] };
+}
+
+/** Outline around subtitle words. */
+export interface TextBorder {
+  width: number;
+  color: string;
+}
+
+/** Shadow under subtitle words, offset by `x` and `y` px. */
+export interface TextShadow {
+  x: number;
+  y: number;
+  color: string;
 }
 
 /** Fades the text out over the last `seconds` before `end`. */
@@ -110,6 +125,9 @@ export interface PlacedWord {
   x: number;
   /** While the word is spoken (clip-relative seconds), it is drawn in `color` instead. */
   active?: { start: number; end: number; color: string };
+  /** Without it, a 3 px outline in the renderer's ink at 85%. */
+  border?: TextBorder;
+  shadow?: TextShadow;
 }
 
 /** One line of subtitles, shown from `start` to `end` (clip-relative seconds). */
@@ -153,6 +171,18 @@ export interface SubtitleOptions {
   hold?: number;
   /** @default TEXT_WIDTH */
   maxWidth?: number;
+  /**
+   * Words that end a piece, like sentence ends do. Pass `/[.,?!]["']?$/` to also break after
+   * commas.
+   *
+   * @default /[.?!]["']?$/
+   */
+  breakAfter?: RegExp;
+  /** A silence longer than this many seconds between two words also ends a piece. */
+  pause?: number;
+  /** @default a 3 px outline in the renderer's ink at 85% */
+  border?: TextBorder;
+  shadow?: TextShadow;
 }
 
 export interface ClipOptions {
@@ -174,12 +204,22 @@ export interface ClipOptions {
     outSeconds?: number;
     fade?: boolean;
   };
-  /** A full-width ink band with text, up from the first frame, fading out before the clip ends. */
+  /**
+   * Text up from the first frame, on a full-width ink band when `band` is given, fading out
+   * `outSeconds` before the clip ends. Without `outSeconds` it stays to the end.
+   */
   hook?: {
-    band: { y: number; h: number; opacity: number };
+    band?: { y: number; h: number; opacity: number };
     lines: TextLine[];
-    outSeconds: number;
+    outSeconds?: number;
   };
+  /**
+   * Filter chain that turns the source picture into the 1080x1920 frame, for a layout of your
+   * own: it reads the source picture and outputs the frame.
+   *
+   * @default FILL_9_16
+   */
+  fill?: string;
   /**
    * Seconds the first frame is held, silent, before the clip plays. Subtitles and mute
    * windows move with it.
@@ -203,7 +243,7 @@ function defaultFfmpeg(): string {
   }
 }
 
-const endsSentence = (text: string) => /[.?!]["']?$/.test(text);
+const SENTENCE_END = /[.?!]["']?$/;
 
 /** Renders 1080x1920 reel segments with ffmpeg and joins them. */
 export class Renderer {
@@ -267,6 +307,54 @@ export class Renderer {
     return width <= maxWidth ? size : Math.floor((size * maxWidth) / width);
   }
 
+  /** Height of the font's capital letters at `size`, for placing text by its top. */
+  capHeight(font: string, size: number): number {
+    const f = this.font(font);
+    return ((f.tables.os2?.sCapHeight ?? f.ascender) * size) / f.unitsPerEm;
+  }
+
+  /** `text` without the characters `font` has no glyph for, such as emoji, with spaces collapsed. */
+  printable(text: string, font: string): string {
+    const f = this.font(font);
+    return [...text]
+      .filter((ch) => /\s/.test(ch) || f.charToGlyphIndex(ch) > 0)
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  /**
+   * `text` wrapped into lines of at most `maxWidth`. With `balance`, the lines are as even as
+   * the fewest lines allow, instead of full lines and a short last one.
+   */
+  wrapText(text: string, font: string, size: number, { maxWidth = TEXT_WIDTH, balance = false } = {}): string[] {
+    const wrap = (width: number) => {
+      const lines: string[] = [];
+      let line = "";
+      for (const word of text.split(" ")) {
+        const next = line ? `${line} ${word}` : word;
+        if (!line || this.textWidth(next, font, size) <= width) line = next;
+        else {
+          lines.push(line);
+          line = word;
+        }
+      }
+      if (line) lines.push(line);
+      return lines;
+    };
+    const lines = wrap(maxWidth);
+    if (!balance || lines.length < 2) return lines;
+    // The narrowest width that keeps the same number of lines.
+    let lo = 0;
+    let hi = maxWidth;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) / 2;
+      if (wrap(mid).length <= lines.length) hi = mid;
+      else lo = mid;
+    }
+    return wrap(hi);
+  }
+
   /** A solid ink layer at `opacity`, as a filter source with optional alpha fades. */
   inkLayer({ w, h, opacity, duration, fadeIn, fadeOut }: InkLayerOptions): string {
     let src = `color=c=${this.ink}:s=${w}x${h}:r=${FPS}:d=${duration},format=rgba,colorchannelmixer=aa=${opacity}`;
@@ -282,7 +370,7 @@ export class Renderer {
    */
   drawTexts(lines: TextLine[], out: FadeOut | null, workDir: string, name: string): string[] {
     return lines.map((line, i) => {
-      const { x = MARGIN, baseline, delay = 0, rise = TEXT_RISE, window } = line;
+      const { x = MARGIN, baseline, delay = 0, rise = TEXT_RISE, window, box } = line;
       const p = `clip((t-${delay})/${TEXT_IN_SECONDS},0,1)`;
       const eased = `(${p}*(2-${p}))`;
       const alpha = out ? `${eased}*clip((${out.end}-t)/${out.seconds},0,1)` : eased;
@@ -293,7 +381,8 @@ export class Renderer {
         { ...line, x },
         `y='${y}':alpha='${alpha}'` +
           // Half-open, so lines with back-to-back windows never share a frame.
-          (window ? `:enable='gte(t,${window[0]})*lt(t,${window[1]})'` : ""),
+          (window ? `:enable='gte(t,${window[0]})*lt(t,${window[1]})'` : "") +
+          (box ? `:box=1:boxcolor=${box.color}:boxborderw=${[box.border].flat().join("|")}` : ""),
       );
     });
   }
@@ -315,7 +404,10 @@ export class Renderer {
    * further while it is wider than `maxWidth`.
    */
   subtitleChunks(options: SubtitleOptions): SubtitleChunk[] {
-    const { words, duration, font, color, style, activeColor, size = 56, baseline = 1445, maxWords = 5, hold = 0.6, maxWidth = TEXT_WIDTH } = options;
+    const {
+      words, duration, font, color, style, activeColor, size = 56, baseline = 1445, maxWords = 5, hold = 0.6, maxWidth = TEXT_WIDTH,
+      breakAfter = SENTENCE_END, pause, border, shadow,
+    } = options;
     const styled = words.map((w) => ({ ...w, font, color, ...style?.(w) }));
     const space = this.textWidth(" ", font, size);
     const width = (ws: typeof styled) =>
@@ -324,8 +416,13 @@ export class Renderer {
     const sentences: (typeof styled)[] = [];
     let current: typeof styled = [];
     for (const word of styled) {
+      const prev = current[current.length - 1];
+      if (prev && pause != null && word.start - prev.end > pause) {
+        sentences.push(current);
+        current = [];
+      }
       current.push(word);
-      if (endsSentence(word.text)) {
+      if (breakAfter.test(word.text)) {
         sentences.push(current);
         current = [];
       }
@@ -361,7 +458,7 @@ export class Renderer {
       const lineEnd = Math.max(end, first.start + 0.1);
       let x = (WIDTH - width(group)) / 2;
       const placed = group.map((w, j): PlacedWord => {
-        const word: PlacedWord = { text: w.text, font: w.font, color: w.color, size, baseline, x };
+        const word: PlacedWord = { text: w.text, font: w.font, color: w.color, size, baseline, x, ...(border ? { border } : {}), ...(shadow ? { shadow } : {}) };
         const spokenColor = w.activeColor === undefined ? activeColor : w.activeColor;
         if (spokenColor) {
           const from = Math.max(start, w.start);
@@ -380,7 +477,9 @@ export class Renderer {
     return chunks.flatMap((chunk, c) =>
       chunk.words.flatMap((word, w) => {
         const file = `${name}-sub${c}-${w}.txt`;
-        const look = `y=${word.baseline}-ascent:borderw=3:bordercolor=${this.ink}@0.85`;
+        const { width, color } = word.border ?? { width: 3, color: `${this.ink}@0.85` };
+        const shadow = word.shadow ? `:shadowx=${word.shadow.x}:shadowy=${word.shadow.y}:shadowcolor=${word.shadow.color}` : "";
+        const look = `y=${word.baseline}-ascent:borderw=${width}:bordercolor=${color}${shadow}`;
         const shown = `between(t,${chunk.start.toFixed(3)},${chunk.end.toFixed(3)})`;
         if (!word.active) return [this.drawtext(workDir, file, word, `${look}:enable='${shown}'`)];
         // Half-open, so no frame has the word in both colors.
@@ -397,7 +496,7 @@ export class Renderer {
    * Renders `start` to `end` of a clip as a 9:16 segment, with optional tag, hook, subtitles
    * and beeps. Returns the file name in `workDir`.
    */
-  async renderClip({ clipPath, start, end, tag, hook, hold = 0, subtitles = [], mute = [], loudness, workDir, name }: ClipOptions): Promise<string> {
+  async renderClip({ clipPath, start, end, tag, hook, fill = FILL_9_16, hold = 0, subtitles = [], mute = [], loudness, workDir, name }: ClipOptions): Promise<string> {
     const duration = end - start + hold;
     const held = subtitles.map((c) => ({
       start: c.start + hold,
@@ -407,7 +506,7 @@ export class Renderer {
     const subs = this.drawSubtitles(held, workDir, name);
     const withSubs = (chain: string) => (subs.length ? `${chain},${subs.join(",")}` : chain);
     const out = hook ? "[pre]" : "[v]";
-    const input = `[0:v]${hold ? `tpad=start_duration=${hold.toFixed(3)}:start_mode=clone,` : ""}${FILL_9_16}`;
+    const input = `[0:v]${hold ? `tpad=start_duration=${hold.toFixed(3)}:start_mode=clone,` : ""}${fill}`;
     // loudnorm outputs at 192 kHz, so the resample comes after it.
     const sound = `[0:a]${loudness == null ? "" : `loudnorm=I=${loudness}:TP=-1.5:LRA=11,`}aresample=${SAMPLE_RATE}${hold ?`,adelay=${Math.round(hold * 1000)}:all=1` : ""}`;
     let video = `${withSubs(input)}${out}`;
@@ -429,9 +528,14 @@ export class Renderer {
     }
     if (hook) {
       const { band, lines, outSeconds } = hook;
-      const ink = this.inkLayer({ w: WIDTH, h: band.h, opacity: band.opacity, duration, fadeOut: { start: duration - outSeconds, seconds: outSeconds } });
-      const texts = this.drawTexts(lines.map((l) => ({ ...l, delay: -TEXT_IN_SECONDS, rise: 0 })), { end: duration, seconds: outSeconds }, workDir, `${name}-hook`);
-      video += `;${ink}[band];[pre][band]overlay=0:${band.y}:format=auto,${texts.join(",")}[v]`;
+      const fadeOut = outSeconds ? { start: duration - outSeconds, seconds: outSeconds } : null;
+      const texts = this.drawTexts(lines.map((l) => ({ ...l, delay: -TEXT_IN_SECONDS, rise: 0 })), fadeOut && { end: duration, seconds: fadeOut.seconds }, workDir, `${name}-hook`);
+      if (band) {
+        const ink = this.inkLayer({ w: WIDTH, h: band.h, opacity: band.opacity, duration, fadeOut });
+        video += `;${ink}[band];[pre][band]overlay=0:${band.y}:format=auto,${texts.join(",")}[v]`;
+      } else {
+        video += `;[pre]${texts.join(",") || "null"}[v]`;
+      }
     }
 
     let audio = `${sound}[a]`;

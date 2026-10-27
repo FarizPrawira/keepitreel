@@ -135,6 +135,84 @@ describe("Renderer", () => {
         expect(chunks.length).toBeGreaterThan(1);
       });
     });
+
+    describe("when given breakAfter with commas", () => {
+      it("should also end a line after a comma", () => {
+        const chunks = renderer.subtitleChunks({ words: timed("Well, go home now."), duration: 5, font: "display", color: "white", breakAfter: /[.,?!]["']?$/ });
+        expect(lineTexts(chunks)).toEqual(["Well,", "go home now."]);
+      });
+    });
+
+    describe("when given a pause", () => {
+      it("should end a line where the silence between two words is longer", () => {
+        const words = [...timed("go home", 0), ...timed("right now.", 1.5)];
+        expect(lineTexts(chunk(words))).toEqual(["go home right now."]);
+        const paused = renderer.subtitleChunks({ words, duration: 5, font: "display", color: "white", pause: 0.35 });
+        expect(lineTexts(paused)).toEqual(["go home", "right now."]);
+      });
+    });
+
+    describe("when given a border and a shadow", () => {
+      it("should put them on every word", () => {
+        const border = { width: 7, color: "black" };
+        const shadow = { x: 0, y: 6, color: "black@0.55" };
+        const [line] = renderer.subtitleChunks({ words: timed("Go home."), duration: 5, font: "display", color: "white", border, shadow });
+        expect(line!.words.every((w) => w.border === border && w.shadow === shadow)).toBe(true);
+      });
+    });
+
+    describe("when given no border or shadow", () => {
+      it("should leave them off the words", () => {
+        const [line] = chunk(timed("Go home."));
+        expect(line!.words.every((w) => !("border" in w) && !("shadow" in w))).toBe(true);
+      });
+    });
+  });
+
+  describe("printable", () => {
+    describe("when given emoji and characters the font has no glyph for", () => {
+      it("should leave them out and collapse the spaces", () => {
+        expect(renderer.printable("Wait 🔥 for  it ✨", "display")).toBe("Wait for it");
+      });
+    });
+  });
+
+  describe("capHeight", () => {
+    it("should scale the font's capital height with the size", () => {
+      expect(renderer.capHeight("display", 100)).toBeCloseTo(2 * renderer.capHeight("display", 50), 5);
+      expect(renderer.capHeight("display", 100)).toBeGreaterThan(50);
+    });
+  });
+
+  describe("wrapText", () => {
+    const text = "Why this one small mistake costs you every single time";
+
+    describe("when given text wider than maxWidth", () => {
+      it("should wrap it into lines that fit, keeping every word", () => {
+        const lines = renderer.wrapText(text, "display", 80, { maxWidth: 700 });
+        expect(lines.length).toBeGreaterThan(1);
+        expect(lines.every((l) => renderer.textWidth(l, "display", 80) <= 700)).toBe(true);
+        expect(lines.join(" ")).toBe(text);
+      });
+    });
+
+    describe("when asked to balance", () => {
+      it("should keep the number of lines and make them more even", () => {
+        const widths = (lines: string[]) => lines.map((l) => renderer.textWidth(l, "display", 80));
+        const spread = (lines: string[]) => Math.max(...widths(lines)) - Math.min(...widths(lines));
+        const plain = renderer.wrapText(text, "display", 80, { maxWidth: 800 });
+        const even = renderer.wrapText(text, "display", 80, { maxWidth: 800, balance: true });
+        expect(even).toHaveLength(plain.length);
+        expect(spread(even)).toBeLessThan(spread(plain));
+        expect(even.join(" ")).toBe(text);
+      });
+    });
+
+    describe("when given text that fits", () => {
+      it("should keep it on one line", () => {
+        expect(renderer.wrapText("Short one", "display", 80, { balance: true })).toEqual(["Short one"]);
+      });
+    });
   });
 
   describe("fitSize", () => {
@@ -210,6 +288,23 @@ describe("Renderer", () => {
         expect(filter).toContain(":enable='gte(t,1)*lt(t,2)'");
       });
     });
+
+    describe("when given a box", () => {
+      it("should draw it behind the text with the given border", () => {
+        const line = { text: "Hook", font: "display", size: 80, color: "0x111111", baseline: 500 };
+        const [even] = renderer.drawTexts([{ ...line, box: { color: "white", border: 18 } }], null, dir, "box");
+        const [wide] = renderer.drawTexts([{ ...line, box: { color: "white", border: [18, 26] } }], null, dir, "box-wide");
+        expect(even).toContain(":box=1:boxcolor=white:boxborderw=18");
+        expect(wide).toContain(":box=1:boxcolor=white:boxborderw=18|26");
+      });
+    });
+
+    describe("when given no box", () => {
+      it("should draw no box", () => {
+        const [filter] = renderer.drawTexts([{ text: "Hi", font: "display", size: 80, color: "white", baseline: 900 }], null, dir, "nobox");
+        expect(filter).not.toContain("box=");
+      });
+    });
   });
 
   // The render tests need ffmpeg: ffmpeg-static after `node node_modules/ffmpeg-static/install.js`,
@@ -278,6 +373,27 @@ describe("Renderer", () => {
         });
         expect(await renderer.probeSeconds(join(dir, file))).toBeCloseTo(1.5, 1);
         expect(probe(join(dir, file))).toMatch(/1080x1920/);
+      }, 60_000);
+    });
+
+    describe("when rendering a clip with a hook without a band, its own fill, and outlined subtitles", () => {
+      it("should make a 9:16 segment with the hook up to the end and the subtitles' border and shadow", async () => {
+        const fill = `split[a][b];[a]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=30[bg];[b]crop='min(iw,ih*3/2)':'min(ih,iw*2/3)',scale=1080:720,setsar=1[fg];[bg][fg]overlay=0:600,setsar=1`;
+        const subtitles = renderer.subtitleChunks({
+          words: timed("Watch this."), duration: 2, font: "display", color: "white",
+          border: { width: 7, color: "black" }, shadow: { x: 0, y: 6, color: "black@0.55" },
+        });
+        const file = await renderer.renderClip({
+          clipPath: source(), start: 0, end: 2, workDir: dir, name: "boxed", fill, subtitles,
+          hook: { lines: [{ text: "The part", font: "display", size: 96, color: "0x111111", baseline: 500, x: 300, box: { color: "white", border: [21, 29] } }] },
+        });
+        const graph = readFileSync(join(dir, "boxed.filter"), "utf8");
+        expect(await renderer.probeSeconds(join(dir, file))).toBeCloseTo(2, 1);
+        expect(probe(join(dir, file))).toMatch(/1080x1920/);
+        expect(graph).toContain("overlay=0:600");
+        expect(graph).not.toContain("color=c=");
+        expect(graph).toContain("borderw=7:bordercolor=black:shadowx=0:shadowy=6:shadowcolor=black@0.55");
+        expect(graph).toContain("boxborderw=21|29");
       }, 60_000);
     });
 
