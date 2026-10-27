@@ -8,6 +8,7 @@ import {
   PostPlatform,
   Provider,
   type AuthUrlArgs,
+  type CheckOptionsArgs,
   type ConnectArgs,
   type Log,
   type PostArgs,
@@ -63,6 +64,15 @@ export interface MetaOptions {
   /** The Page to post to. Left out, the first Page the account manages. */
   pageId?: string;
 }
+
+export interface InstagramPostOptions {
+  /** Shows the "Paid partnership" label. The account needs Instagram's branded content tools. */
+  paidPartnership?: boolean;
+  /** Instagram user ids of up to 2 brands to name in the label. */
+  sponsorIds?: string[];
+}
+
+const MAX_SPONSORS = 2;
 
 const NO_INSTAGRAM = "The Facebook Page has no linked Instagram Business or Creator account";
 const instagramHandle = (account: MetaAccount) => account.instagram && `@${account.instagram.username}`;
@@ -214,7 +224,18 @@ export class InstagramReels extends Platform<MetaAccount> {
     return granted(account, "instagram_manage_insights") ? null : NO_INSIGHTS;
   }
 
-  async upload({ account, file, size, text, log }: UploadArgs<MetaAccount>): Promise<UploadResult> {
+  override async checkOptions({ options }: CheckOptionsArgs<MetaAccount>): Promise<string | null> {
+    const o = options as InstagramPostOptions | undefined;
+    return (o?.sponsorIds?.length ?? 0) > MAX_SPONSORS ? `Instagram takes at most ${MAX_SPONSORS} brands per post` : null;
+  }
+
+  async upload({ account, file, size, text, log, options }: UploadArgs<MetaAccount>): Promise<UploadResult> {
+    const o = options as InstagramPostOptions | undefined;
+    // The ids go as written, since they are too long for a JavaScript number.
+    const partnership = {
+      ...(o?.paidPartnership ? { is_paid_partnership: "true" } : {}),
+      ...(o?.sponsorIds?.length ? { branded_content_sponsor_ids: `[${o.sponsorIds.join(",")}]` } : {}),
+    };
     const { token } = account.page;
     const igId = instagramId(account);
     // Instagram's upload host sometimes refuses a good file ("Request processing failed") for a
@@ -223,7 +244,7 @@ export class InstagramReels extends Platform<MetaAccount> {
     for (let tries = 0; ; tries++) {
       container = await api(`${GRAPH}/${igId}/media`, {
         method: "POST",
-        form: { media_type: "REELS", upload_type: "resumable", caption: text.caption, share_to_feed: "true", access_token: token },
+        form: { media_type: "REELS", upload_type: "resumable", caption: text.caption, share_to_feed: "true", ...partnership, access_token: token },
       });
       try {
         await this.provider.sendFile(container.uri, token, file, size);
