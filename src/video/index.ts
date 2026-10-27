@@ -6,6 +6,8 @@ export type {
   InkLayerOptions,
   TimedWord,
   PlacedWord,
+  TextBorder,
+  TextShadow,
   SubtitleChunk,
   SubtitleOptions,
   ClipOptions,

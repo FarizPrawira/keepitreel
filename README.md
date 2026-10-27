@@ -199,8 +199,9 @@ Renders `start` to `end` of a clip as a 9:16 segment: the landscape picture sits
 | `workDir` | `string` | required | Where the output and the files ffmpeg reads go: the text, and the filter graph (`<name>.filter`), which keeps clips with hundreds of subtitle words within Windows' command-line limit |
 | `name` | `string` | required | The output's base name |
 | `subtitles` | `SubtitleChunk[]` | `[]` | From [`.subtitleChunks()`](#subtitlechunksoptions) |
-| `hook` | `{ band: { y, h, opacity }, lines, outSeconds }` | | A full-width ink band with text, up from the first frame, fading out `outSeconds` before the end |
+| `hook` | `{ band?: { y, h, opacity }, lines, outSeconds? }` | | Text up from the first frame, on a full-width ink band when `band` is given, fading out `outSeconds` before the end. Without `outSeconds` it stays to the end |
 | `tag` | `{ box: { x, y, w, h, opacity }, lines, delay?, outSeconds?, fade? }` | | An ink box with text that fades in after `delay` and out before the end. With `fade: false` it is up for the whole clip |
+| `fill` | `string` | `FILL_9_16` | The filter chain that turns the source picture into the 1080x1920 frame, for a layout of your own (for example the picture cropped and placed higher, over a darker blur) |
 | `hold` | `number` | `0` | Seconds the first frame is held, silent, before the clip plays. Subtitles and mute windows move with it |
 | `mute` | `[number, number][]` | `[]` | Clip-relative windows where the sound is replaced by a beep |
 | `loudness` | `number` | | Target loudness in LUFS, e.g. `-14`. The clip's sound is normalized to it before beeps are mixed in. Without it the sound is left as it is |
@@ -223,6 +224,10 @@ Splits clip-relative words into one-line, centered chunks, breaking at sentence 
 | `maxWords` | `number` | `5` | |
 | `hold` | `number` | `0.6` | Seconds a chunk stays up after its last word when the next one is not right after |
 | `maxWidth` | `number` | `TEXT_WIDTH` | |
+| `breakAfter` | `RegExp` | `/[.?!]["']?$/` | Words that end a piece, as sentence ends do. `/[.,?!]["']?$/` also breaks after commas |
+| `pause` | `number` | | A silence longer than this many seconds between two words also ends a piece |
+| `border` | `{ width, color }` | 3 px, the renderer's ink at 85% | The outline around each word |
+| `shadow` | `{ x, y, color }` | | A shadow under each word, offset by `x` and `y` px |
 
 #### .concat(segments, workDir, outputPath)
 
@@ -251,6 +256,18 @@ Returns the width in pixels of `text` in the font with key `font` at `size`.
 #### .fitSize(text, font, size, maxWidth?)
 
 Returns the largest size up to `size` at which `text` fits in `maxWidth` (default `TEXT_WIDTH`).
+
+#### .wrapText(text, font, size, options?)
+
+Returns `text` wrapped into lines no wider than `maxWidth` (default `TEXT_WIDTH`). With `balance: true` the lines are as even as the fewest lines allow, instead of full lines and a short last one.
+
+#### .printable(text, font)
+
+Returns `text` without the characters the font has no glyph for, such as emoji, with spaces collapsed. ffmpeg draws those as empty boxes.
+
+#### .capHeight(font, size)
+
+Returns the height of the font's capital letters at `size`. `baseline = top + capHeight` places text by the top of its capitals.
 
 #### .drawTexts(lines, out, workDir, name)
 
@@ -282,6 +299,7 @@ The `lines` of a hook or tag, and the input of `.drawTexts()`:
 | `delay` | `number` | `0` | Seconds before the line fades in. `-0.25` has it fully in at the first frame |
 | `rise` | `number` | `18` | Pixels the line rises while it fades in |
 | `window` | `[number, number]` | | Seconds the line is shown, from the first up to, not including, the second |
+| `box` | `{ color, border }` | | A box behind the text, `border` px around it, or `[vertical, horizontal]` |
 
 In a hook or tag, `.renderClip()` sets `delay` and `rise` itself: the lines follow the band's or box's fade and do not rise.
 
