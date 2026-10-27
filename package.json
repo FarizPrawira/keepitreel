@@ -1,6 +1,6 @@
 {
   "name": "keepitreel",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Building blocks for automated short-form video: Whisper transcription, ffmpeg reel rendering, and publishing to YouTube Shorts, Facebook, Instagram and TikTok.",
   "type": "module",
   "exports": {
