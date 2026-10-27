@@ -541,8 +541,10 @@ export class Renderer {
     let audio = `${sound}[a]`;
     if (mute.length) {
       const muted = `gt(${mute.map(([a, b]) => `between(t,${(a + hold).toFixed(3)},${(b + hold).toFixed(3)})`).join("+")},0)`;
+      // `enable` is checked once per frame, at its start. loudnorm flushes its last 3 seconds as
+      // one frame, which a mute starting inside it would miss, so frames are cut to 1024 samples.
       audio =
-        `${sound},aformat=channel_layouts=stereo,volume=volume=0:enable='${muted}'[dry];` +
+        `${sound},asetnsamples=n=1024:p=0,aformat=channel_layouts=stereo,volume=volume=0:enable='${muted}'[dry];` +
         `aevalsrc='${BEEP_LEVEL}*sin(2*PI*${BEEP_HZ}*t)*${muted}':c=stereo:s=${SAMPLE_RATE}:d=${duration.toFixed(3)}[beep];` +
         "[dry][beep]amix=inputs=2:normalize=0:duration=first[a]";
     }
