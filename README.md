@@ -414,7 +414,7 @@ Returns a `Promise` of an error message, or `null` when a video can go. Checks t
 |---|---|---|
 | `platforms` | `string[]` | Platform names |
 | `seconds` | `number` | Length of the video |
-| `options` | `Record<string, unknown>` | Each platform's post screen settings, by platform name. See [TikTok](#tiktok-post-settings) |
+| `options` | `Record<string, unknown>` | Each platform's post screen settings, by platform name. See [TikTok](#tiktok-post-settings) and [paid promotion](#paid-promotion-labels) |
 | `publishAt` | `string \| null` | An ISO date and time 10 minutes to 29 days ahead, on platforms that schedule |
 
 #### .publish(options)
@@ -512,6 +512,22 @@ Pass the screen's choices to `.check()` and `.publish()` as `options.tiktok`:
 | `privacy` | One of `privacyOptions` |
 | `allowComment`, `allowDuet`, `allowStitch` | Off unless turned on |
 | `disclose` | Whether the post promotes something; then `yourBrand`, `branded` or both |
+
+### Paid promotion labels
+
+Pass these to `.check()` and `.publish()` as `options.youtube` and `options.instagram`. TikTok's is `disclose` in its [post settings](#tiktok-post-settings).
+
+| Platform | Field | |
+|---|---|---|
+| `youtube` | `paidPromotion` | Ticks "Includes paid promotion" |
+| `instagram` | `paidPartnership` | Shows the "Paid partnership" label |
+| `instagram` | `sponsorIds` | Instagram user ids of up to 2 brands to name in the label, as strings. Find one by username with the Business Discovery API |
+
+YouTube's docs do not list the paid promotion flag as settable on upload. keepitreel sends it and reads it back, and when YouTube drops it the result's `note` says to tick it in YouTube Studio.
+
+Instagram refuses the post when the account has not turned on branded content tools. A brand that has not approved the account shows as "Paid partnership" until it does.
+
+Facebook's Reels API has no branded content field, so label Facebook Reels on Facebook after posting.
 
 ### Errors and permissions
 

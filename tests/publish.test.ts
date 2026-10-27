@@ -648,3 +648,58 @@ describe("Publisher with Meta", () => {
     });
   });
 });
+
+describe("paid promotion labels", () => {
+  const dir = mkdtempSync(join(tmpdir(), "keepitreel-paid-"));
+  const file = join(dir, "video.mp4");
+  writeFileSync(file, Buffer.alloc(2048));
+  const args = { save: () => {}, file, size: 2048, text: { title: "Title", caption: "Caption" }, log: () => {}, publishAt: null };
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  describe("when YouTube is asked to flag paid promotion", () => {
+    const youtube = () => new GoogleProvider({ clientId: "id", clientSecret: "secret" }).platforms[0]!;
+    const account = { refreshToken: "r", channel: { id: "UC1", name: "Channel" } };
+    const started = () => new Response(null, { status: 200, headers: { location: "https://upload.example/v1" } });
+    const uploaded = (flagged: boolean) => reply({ id: "v1", status: { privacyStatus: "public" }, paidProductPlacementDetails: { hasPaidProductPlacement: flagged } });
+
+    it("should send the flag in its part", async () => {
+      const fetch = stubFetch(reply({ access_token: "a" }), started(), uploaded(true));
+      const result = await youtube().upload({ ...args, account, options: { paidPromotion: true } });
+      const [url, init] = fetch.mock.calls[1]!;
+      expect(url).toContain("part=snippet,status,paidProductPlacementDetails");
+      expect(JSON.parse(init.body).paidProductPlacementDetails).toEqual({ hasPaidProductPlacement: true });
+      expect(result.note).toBeNull();
+    });
+
+    it("should say to tick it in YouTube Studio when YouTube drops it", async () => {
+      stubFetch(reply({ access_token: "a" }), started(), uploaded(false));
+      const result = await youtube().upload({ ...args, account, options: { paidPromotion: true } });
+      expect(result.note).toMatch(/YouTube Studio/);
+    });
+  });
+
+  describe("when Instagram is asked for the Paid partnership label", () => {
+    const instagram = () => new MetaProvider({ appId: "a", appSecret: "s" }).platforms[1]!;
+    const account = { page: { id: "1", name: "Page", token: "t" }, instagram: { id: "2", username: "shop" } };
+
+    it("should send the label and the brands' ids as written", async () => {
+      const fetch = stubFetch(
+        reply({ id: "c1", uri: "https://rupload.example/c1" }),
+        reply({ success: true }),
+        reply({ status_code: "FINISHED" }),
+        reply({ id: "m1" }),
+        reply({ permalink: "https://www.instagram.com/reel/x/" }),
+      );
+      await instagram().upload({ ...args, account, options: { paidPartnership: true, sponsorIds: ["17841400008460056"] } });
+      const form = new URLSearchParams(fetch.mock.calls[0]![1].body);
+      expect(form.get("is_paid_partnership")).toBe("true");
+      expect(form.get("branded_content_sponsor_ids")).toBe("[17841400008460056]");
+    });
+
+    it("should refuse more than 2 brands", async () => {
+      const options = { sponsorIds: ["1", "2", "3"] };
+      expect(await instagram().checkOptions({ account, save: () => {}, options, seconds: 30 })).toMatch(/at most 2 brands/);
+    });
+  });
+});

@@ -19,9 +19,9 @@ export type {
   PostResult,
 } from "./provider.js";
 export { GoogleProvider, YouTubeShorts } from "./google.js";
-export type { GoogleAccount, GoogleOptions } from "./google.js";
+export type { GoogleAccount, GoogleOptions, YouTubePostOptions } from "./google.js";
 export { MetaProvider, FacebookReels, InstagramReels, FacebookPosts, InstagramPosts } from "./meta.js";
-export type { MetaAccount, MetaOptions } from "./meta.js";
+export type { MetaAccount, MetaOptions, InstagramPostOptions } from "./meta.js";
 export { TikTokProvider, TikTok } from "./tiktok.js";
 export type { TikTokAccount, TikTokOptions, CreatorInfo, TikTokPostOptions } from "./tiktok.js";
 export { PublishError } from "./errors.js";

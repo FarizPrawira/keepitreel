@@ -48,6 +48,11 @@ export interface GoogleOptions {
   language?: string;
 }
 
+export interface YouTubePostOptions {
+  /** Ticks "Includes paid promotion", which shows viewers a disclosure. */
+  paidPromotion?: boolean;
+}
+
 /** Google sign-in (a Desktop OAuth client) for YouTube Shorts. */
 export class GoogleProvider extends Provider<GoogleAccount> {
   readonly options: GoogleOptions;
@@ -109,14 +114,15 @@ export class YouTubeShorts extends Platform<GoogleAccount> {
     return analyticsGranted(account) ? null : "YouTube Analytics was not allowed, so stats have views, likes and comments only";
   }
 
-  async upload({ account, file, size, text, publishAt }: UploadArgs<GoogleAccount>): Promise<UploadResult> {
+  async upload({ account, file, size, text, publishAt, options }: UploadArgs<GoogleAccount>): Promise<UploadResult> {
+    const paid = !!(options as YouTubePostOptions | undefined)?.paidPromotion;
     const accessToken = await this.provider.accessToken(account);
     const { categoryId, language } = this.provider.options;
     // Viewers whose YouTube is set to one of these languages see that title. The description
     // stays the caption.
     const translated = Object.entries(text.titles ?? {});
     const localizations = Object.fromEntries(translated.map(([lang, title]) => [lang, { title, description: text.caption }]));
-    const parts = translated.length ? "snippet,status,localizations" : "snippet,status";
+    const parts = ["snippet", "status", ...(translated.length ? ["localizations"] : []), ...(paid ? ["paidProductPlacementDetails"] : [])].join(",");
     const initUrl = `https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=${parts}`;
     const init = await fetch(initUrl, {
       method: "POST",
@@ -139,6 +145,7 @@ export class YouTubeShorts extends Platform<GoogleAccount> {
           ? { privacyStatus: "private", publishAt: publishAt.toISOString(), selfDeclaredMadeForKids: false }
           : { privacyStatus: "public", selfDeclaredMadeForKids: false },
         ...(translated.length ? { localizations } : {}),
+        ...(paid ? { paidProductPlacementDetails: { hasPaidProductPlacement: true } } : {}),
       }),
     });
     if (!init.ok) throw platformError(initUrl, init.status, await init.text());
@@ -149,10 +156,14 @@ export class YouTubeShorts extends Platform<GoogleAccount> {
       body: readFileSync(file),
     });
     const locked = publishAt ? !video.status?.publishAt : video.status?.privacyStatus !== "public";
-    return {
-      url: `https://youtube.com/shorts/${video.id}`,
-      note: locked ? "YouTube keeps it private until Google audits this app" : null,
-    };
+    // YouTube's docs do not list the paid promotion flag as settable, so the answer shows
+    // whether it was kept.
+    const unflagged = paid && !video.paidProductPlacementDetails?.hasPaidProductPlacement;
+    const notes = [
+      locked && "YouTube keeps it private until Google audits this app",
+      unflagged && "YouTube did not keep the paid promotion flag, so tick it in YouTube Studio",
+    ].filter(Boolean);
+    return { url: `https://youtube.com/shorts/${video.id}`, note: notes.join(". ") || null };
   }
 
   override async stats({ account, urls }: StatsArgs<GoogleAccount>): Promise<Map<string, PostStats>> {
