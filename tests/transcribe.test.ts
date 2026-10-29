@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { normalize, toSentences, transcribe, type Segment } from "../src/transcribe/index.js";
 
@@ -87,6 +88,24 @@ describe("transcribe", () => {
   describe("when given a Python that does not exist", () => {
     it("should reject with the spawn error", async () => {
       await expect(transcribe("missing.wav", { python: "keepitreel-no-such-python" })).rejects.toThrow(/ENOENT/);
+    });
+  });
+
+  describe("when the script reports progress", () => {
+    it("should pass each share to onProgress and still resolve to the transcript", async () => {
+      // NODE_OPTIONS reads a backslash in quotes as an escape, so Windows paths go with forward slashes.
+      const fake = fileURLToPath(new URL("./fixtures/fake-whisper.cjs", import.meta.url)).replaceAll("\\", "/");
+      const before = process.env.NODE_OPTIONS;
+      process.env.NODE_OPTIONS = `--require "${fake}"`;
+      const shares: number[] = [];
+      try {
+        const result = await transcribe("missing.wav", { python: process.execPath, onProgress: (s) => shares.push(s) });
+        expect(shares).toEqual([0.5, 1]);
+        expect(result).toEqual([{ words: [{ word: " Hi.", start: 0, end: 0.5 }] }]);
+      } finally {
+        if (before === undefined) delete process.env.NODE_OPTIONS;
+        else process.env.NODE_OPTIONS = before;
+      }
     });
   });
 });

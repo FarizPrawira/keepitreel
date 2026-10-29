@@ -62,8 +62,13 @@ export interface TranscribeOptions {
    * and subtitles are timed by word.
    */
   transcribeOptions?: Record<string, unknown>;
+
+  /** Called as Whisper works through the audio, with the share done so far, from 0 to 1. */
+  onProgress?: (fraction: number) => void;
 }
 
+// The script reports progress on stderr, a line at a time; any other stderr line is Whisper's own.
+const PROGRESS = /^progress (\d+(?:\.\d+)?)\r?$/;
 const SCRIPT = fileURLToPath(new URL("../../python/transcribe.py", import.meta.url));
 const ENGLISH_PROMPT = "Hello. How are you? I'm fine, thanks. Let's go!";
 
@@ -73,20 +78,30 @@ const ENGLISH_PROMPT = "Hello. How are you? I'm fine, thanks. Let's go!";
  * downloads on first use.
  */
 export function transcribe(audioPath: string, options: TranscribeOptions): Promise<Segment[]> {
-  const { python, model = "base.en", language = "en", prompt = ENGLISH_PROMPT, modelOptions = {}, transcribeOptions = {} } = options;
+  const { python, model = "base.en", language = "en", prompt = ENGLISH_PROMPT, modelOptions = {}, transcribeOptions = {}, onProgress } = options;
   // The settings go through stdin, which avoids Windows' command-line quoting and length limits.
   const settings = { audio: audioPath, model, language, prompt, model_options: modelOptions, transcribe_options: transcribeOptions };
   return new Promise((resolve, reject) => {
     const proc = spawn(python, [SCRIPT]);
     let stdout = "";
     let stderr = "";
+    let partial = "";
     proc.stdout.on("data", (d) => (stdout += d));
-    proc.stderr.on("data", (d) => (stderr += d));
+    proc.stderr.on("data", (d) => {
+      const lines = (partial + d).split("\n");
+      partial = lines.pop()!;
+      for (const line of lines) {
+        const progress = PROGRESS.exec(line);
+        if (progress) onProgress?.(Number(progress[1]));
+        else stderr += `${line}\n`;
+      }
+    });
     proc.on("error", reject);
     // A Python that exits early closes stdin; the exit code reports why.
     proc.stdin.on("error", () => {});
     proc.stdin.end(JSON.stringify(settings));
     proc.on("close", (code) => {
+      stderr += partial;
       if (code !== 0) return reject(new Error(`Whisper failed (${code}): ${stderr.slice(-800)}`));
       try {
         resolve(JSON.parse(stdout) as Segment[]);

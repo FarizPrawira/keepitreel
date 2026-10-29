@@ -24,11 +24,15 @@ def main():
         **settings["transcribe_options"],
         "word_timestamps": True,
     }
-    segments, _ = model.transcribe(read_wav(settings["audio"]), **options)
-    result = [
-        {"words": [{"start": w.start, "end": w.end, "word": w.word} for w in segment.words]}
-        for segment in segments
-    ]
+    audio = read_wav(settings["audio"])
+    duration = len(audio) / 16000
+    segments, _ = model.transcribe(audio, **options)
+    result = []
+    for segment in segments:
+        result.append({"words": [{"start": w.start, "end": w.end, "word": w.word} for w in segment.words]})
+        # One line per segment on stderr, so stdout stays the JSON transcript.
+        if duration:
+            print(f"progress {min(segment.end / duration, 1):.4f}", file=sys.stderr, flush=True)
     json.dump(result, sys.stdout)
 
 

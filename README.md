@@ -135,6 +135,17 @@ await transcribe("work/audio.wav", { python, transcribeOptions: { hallucination_
 
 It is off by default because it can also change real words near a silence, so check it on your own audio first. Whisper's output also varies a little from run to run.
 
+#### onProgress
+
+Type: `(fraction: number) => void`\
+*Optional*
+
+Called after each segment Whisper finishes, with how far into the audio it is, from 0 to 1. Whisper returns nothing else until the end, so this is the only sign of progress on a long file:
+
+```ts
+await transcribe("work/audio.wav", { python, onProgress: (f) => console.log(`${Math.round(f * 100)}%`) });
+```
+
 ### toSentences(segments)
 
 Rebuilds sentences from punctuation, and from segment breaks followed by a pause of 0.4 s or more. Returns an array of `{ words, text, start, end, tokens }`, where `tokens` are the words through [`normalize`](#normalizeword), for matching.
