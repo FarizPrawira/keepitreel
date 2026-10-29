@@ -132,7 +132,9 @@ export class MetaProvider extends Provider<MetaAccount> {
   }
 
   /** Waits for Instagram to process a container, publishes it, and returns the post's link. */
-  async publishInstagram(igId: string, containerId: string, token: string, log: Log, what: string): Promise<string> {
+  async publishInstagram(account: MetaAccount, containerId: string, log: Log, what: string): Promise<{ url: string; note: string | null }> {
+    const igId = instagramId(account);
+    const { token } = account.page;
     log(`waiting for Instagram to process the ${what}`);
     await waitFor(async () => {
       const s = await api(`${GRAPH}/${containerId}?fields=status_code,status`, { headers: auth(token) });
@@ -141,8 +143,17 @@ export class MetaProvider extends Provider<MetaAccount> {
     }, `Instagram to process the ${what}`);
     log("processed, publishing");
     const media = await api(`${GRAPH}/${igId}/media_publish`, { method: "POST", form: { creation_id: containerId, access_token: token } });
-    const { permalink } = await api(`${GRAPH}/${media.id}?fields=permalink`, { headers: auth(token) });
-    return permalink;
+    // The post is live from here, so a failed lookup (often the app's rate limit) must not fail
+    // the publish: a retry would post it again.
+    try {
+      const { permalink } = await api(`${GRAPH}/${media.id}?fields=permalink`, { headers: auth(token) });
+      return { url: permalink, note: null };
+    } catch (err) {
+      return {
+        url: `https://www.instagram.com/${account.instagram!.username}/`,
+        note: `Posted, but its link could not be read (${(err as Error).message}), so this links to the profile`,
+      };
+    }
   }
 
   /**
@@ -257,7 +268,7 @@ export class InstagramReels extends Platform<MetaAccount> {
       }
     }
     log("uploaded");
-    return { url: await this.provider.publishInstagram(igId, container.id, token, log, "video") };
+    return this.provider.publishInstagram(account, container.id, log, "video");
   }
 
   override async stats({ account, urls }: StatsArgs<MetaAccount>): Promise<Map<string, PostStats>> {
@@ -373,6 +384,6 @@ export class InstagramPosts extends PostPlatform<MetaAccount> {
       for (const url of images) children.push((await create({ image_url: url, is_carousel_item: "true" })).id);
       container = await create({ media_type: "CAROUSEL", children: children.join(","), caption });
     }
-    return { url: await this.provider.publishInstagram(igId, container.id, token, log, images.length === 1 ? "image" : "carousel") };
+    return this.provider.publishInstagram(account, container.id, log, images.length === 1 ? "image" : "carousel");
   }
 }
