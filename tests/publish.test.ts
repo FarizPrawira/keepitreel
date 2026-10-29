@@ -647,6 +647,23 @@ describe("Publisher with Meta", () => {
       expect(facebook!.warning).toMatch(/Insights were not allowed/);
     });
   });
+
+  describe("when Instagram publishes a post but its link cannot be read", () => {
+    const instagram = () => new MetaProvider({ appId: "a", appSecret: "s" }).posters[1]!;
+    const account = { page: { id: "1", name: "Page", token: "t" }, instagram: { id: "2", username: "shop" } };
+
+    it("should report it posted, linking to the profile, so a retry does not post it again", async () => {
+      stubFetch(
+        reply({ id: "c1" }),
+        reply({ status_code: "FINISHED" }),
+        reply({ id: "m1" }),
+        reply({ error: { message: "Application request limit reached" } }, 403),
+      );
+      const result = await instagram().post({ account, files: [], urls: ["https://cdn.example/1.jpg"], caption: "Caption", log: () => {} });
+      expect(result.url).toBe("https://www.instagram.com/shop/");
+      expect(result.note).toMatch(/Application request limit reached/);
+    });
+  });
 });
 
 describe("paid promotion labels", () => {
