@@ -339,6 +339,35 @@ describe("Renderer", () => {
       }, 60_000);
     });
 
+    describe("when timing a hook and a tag over a white clip", () => {
+      const white = () => join(dir, "white.mp4");
+      // The gray level of one pixel of `file` at `t` seconds.
+      const pixel = (file: string, t: number, x: number, y: number) =>
+        spawnSync(renderer.ffmpegPath, ["-ss", String(t), "-i", file, "-frames:v", "1", "-vf", `crop=1:1:${x}:${y},format=gray`, "-f", "rawvideo", "-"]).stdout[0]!;
+
+      beforeAll(async () => {
+        await renderer.run(["-f", "lavfi", "-i", "color=c=white:size=1280x720:rate=30:duration=3", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-t", "3", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", white()]);
+      });
+
+      it("should fade the hook from fadeAt instead of at the clip's end", async () => {
+        const file = await renderer.renderClip({
+          clipPath: white(), start: 0, end: 2, workDir: dir, name: "fade-at",
+          hook: { band: { y: 680, h: 480, opacity: 0.9 }, lines: [{ text: "Hook", font: "display", size: 60, color: "white", baseline: 760 }], outSeconds: 0.3, fadeAt: 0.5 },
+        });
+        expect(pixel(join(dir, file), 0.2, 540, 900)).toBeLessThan(100);
+        expect(pixel(join(dir, file), 1.5, 540, 900)).toBeGreaterThan(200);
+      }, 60_000);
+
+      it("should keep a tag with outSeconds 0 up to the last frame", async () => {
+        const file = await renderer.renderClip({
+          clipPath: white(), start: 0, end: 2, workDir: dir, name: "tag-stays",
+          tag: { box: { x: 100, y: 300, w: 400, h: 200, opacity: 0.9 }, lines: [{ text: "Tag", font: "display", size: 28, color: "white", x: 120, baseline: 340 }], delay: 0.5, outSeconds: 0 },
+        });
+        expect(pixel(join(dir, file), 0.2, 300, 400)).toBeGreaterThan(200);
+        expect(pixel(join(dir, file), 1.95, 300, 400)).toBeLessThan(100);
+      }, 60_000);
+    });
+
     describe("when rendering a clip with loudness and a beep in its last 3 seconds", () => {
       it("should silence the clip's own sound under the beep", async () => {
         const tone = join(dir, "tone.mp4");

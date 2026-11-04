@@ -194,8 +194,8 @@ export interface ClipOptions {
   workDir: string;
   name: string;
   /**
-   * An ink box with text that fades in over the clip and out before it ends; with
-   * `fade: false` it is up for the whole clip.
+   * An ink box with text that fades in over the clip and out before it ends (it stays to the
+   * end when `outSeconds` is 0); with `fade: false` it is up for the whole clip.
    */
   tag?: {
     box: { x: number; y: number; w: number; h: number; opacity: number };
@@ -206,12 +206,14 @@ export interface ClipOptions {
   };
   /**
    * Text up from the first frame, on a full-width ink band when `band` is given, fading out
-   * `outSeconds` before the clip ends. Without `outSeconds` it stays to the end.
+   * over `outSeconds` before the clip ends, or from `fadeAt` seconds into the clip when that
+   * comes sooner. Without `outSeconds` it stays to the end.
    */
   hook?: {
     band?: { y: number; h: number; opacity: number };
     lines: TextLine[];
     outSeconds?: number;
+    fadeAt?: number;
   };
   /**
    * Filter chain that turns the source picture into the 1080x1920 frame, for a layout of your
@@ -513,23 +515,29 @@ export class Renderer {
     if (tag) {
       const { box, lines, delay = 0, outSeconds = 0, fade = true } = tag;
       const outStart = Math.max(0, duration - outSeconds);
+      const fadesOut = fade && outSeconds > 0;
       const ink = this.inkLayer({
         w: box.w, h: box.h, opacity: box.opacity, duration,
         fadeIn: fade ? { start: delay, seconds: TEXT_IN_SECONDS } : null,
-        fadeOut: fade ? { start: outStart, seconds: outSeconds } : null,
+        fadeOut: fadesOut ? { start: outStart, seconds: outSeconds } : null,
       });
       const texts = this.drawTexts(
         lines.map((l) => ({ ...l, delay: fade ? delay : -TEXT_IN_SECONDS, rise: 0 })),
-        fade ? { end: duration, seconds: outSeconds } : null,
+        fadesOut ? { end: duration, seconds: outSeconds } : null,
         workDir,
         name,
       );
       video = `${ink}[box];${input}[base];${withSubs(`[base][box]overlay=${box.x}:${box.y}:format=auto,${texts.join(",")}`)}${out}`;
     }
     if (hook) {
-      const { band, lines, outSeconds } = hook;
-      const fadeOut = outSeconds ? { start: duration - outSeconds, seconds: outSeconds } : null;
-      const texts = this.drawTexts(lines.map((l) => ({ ...l, delay: -TEXT_IN_SECONDS, rise: 0 })), fadeOut && { end: duration, seconds: fadeOut.seconds }, workDir, `${name}-hook`);
+      const { band, lines, outSeconds, fadeAt } = hook;
+      const fadeOut = outSeconds ? { start: Math.min(fadeAt ?? Infinity, duration - outSeconds), seconds: outSeconds } : null;
+      const texts = this.drawTexts(
+        lines.map((l) => ({ ...l, delay: -TEXT_IN_SECONDS, rise: 0 })),
+        fadeOut && { end: fadeOut.start + fadeOut.seconds, seconds: fadeOut.seconds },
+        workDir,
+        `${name}-hook`,
+      );
       if (band) {
         const ink = this.inkLayer({ w: WIDTH, h: band.h, opacity: band.opacity, duration, fadeOut });
         video += `;${ink}[band];[pre][band]overlay=0:${band.y}:format=auto,${texts.join(",")}[v]`;
