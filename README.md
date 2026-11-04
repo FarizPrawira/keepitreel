@@ -210,8 +210,8 @@ Renders `start` to `end` of a clip as a 9:16 segment: the landscape picture sits
 | `workDir` | `string` | required | Where the output and the files ffmpeg reads go: the text, and the filter graph (`<name>.filter`), which keeps clips with hundreds of subtitle words within Windows' command-line limit |
 | `name` | `string` | required | The output's base name |
 | `subtitles` | `SubtitleChunk[]` | `[]` | From [`.subtitleChunks()`](#subtitlechunksoptions) |
-| `hook` | `{ band?: { y, h, opacity }, lines, outSeconds? }` | | Text up from the first frame, on a full-width ink band when `band` is given, fading out `outSeconds` before the end. Without `outSeconds` it stays to the end |
-| `tag` | `{ box: { x, y, w, h, opacity }, lines, delay?, outSeconds?, fade? }` | | An ink box with text that fades in after `delay` and out before the end. With `fade: false` it is up for the whole clip |
+| `hook` | `{ band?: { y, h, opacity }, lines, outSeconds?, fadeAt? }` | | Text up from the first frame, on a full-width ink band when `band` is given, fading out over `outSeconds` before the end, or from `fadeAt` seconds in when that is sooner. Without `outSeconds` it stays to the end |
+| `tag` | `{ box: { x, y, w, h, opacity }, lines, delay?, outSeconds?, fade? }` | | An ink box with text that fades in after `delay` and out over `outSeconds` before the end; with `outSeconds` 0 it stays to the end. With `fade: false` it is up for the whole clip |
 | `fill` | `string` | `FILL_9_16` | The filter chain that turns the source picture into the 1080x1920 frame, for a layout of your own (for example the picture cropped and placed higher, over a darker blur) |
 | `hold` | `number` | `0` | Seconds the first frame is held, silent, before the clip plays. Subtitles and mute windows move with it |
 | `mute` | `[number, number][]` | `[]` | Clip-relative windows where the sound is replaced by a beep |
