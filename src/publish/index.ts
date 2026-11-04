@@ -23,7 +23,7 @@ export type { GoogleAccount, GoogleOptions, YouTubePostOptions } from "./google.
 export { MetaProvider, FacebookReels, InstagramReels, FacebookPosts, InstagramPosts } from "./meta.js";
 export type { MetaAccount, MetaOptions, InstagramPostOptions } from "./meta.js";
 export { TikTokProvider, TikTok } from "./tiktok.js";
-export type { TikTokAccount, TikTokOptions, CreatorInfo, TikTokPostOptions } from "./tiktok.js";
+export type { TikTokAccount, TikTokOptions, CreatorInfo, TikTokPostOptions, TikTokVideo } from "./tiktok.js";
 export { PublishError } from "./errors.js";
 export type { PublishErrorCode } from "./errors.js";
 export { api, waitFor } from "./api.js";

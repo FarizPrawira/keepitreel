@@ -446,7 +446,7 @@ Returns a `Promise` of what the platform's own post screen must show, fetched fr
 
 #### .stats(platform, urls)
 
-Returns a `Promise` of a `Map` from each post url to its counts: `views`, `likes`, `comments` and, where the platform reports them, `plays`, `reach`, `shares`, `saves`, `follows`, `watchSeconds`, `engagedViews` and `skipRate`. A count the platform cannot read is `null` or left out, and posts it cannot read are left out. TikTok reports no stats, so its `Map` is empty.
+Returns a `Promise` of a `Map` from each post url to its counts: `views`, `likes`, `comments` and, where the platform reports them, `plays`, `reach`, `shares`, `saves`, `follows`, `watchSeconds`, `engagedViews` and `skipRate`. A count the platform cannot read is `null` or left out, and posts it cannot read are left out. TikTok's `Map` is empty, since a draft has no url; read its posted videos with [`.videos()`](#tiktok-videos).
 
 #### .platform(name), .poster(name)
 
@@ -523,6 +523,10 @@ Pass the screen's choices to `.check()` and `.publish()` as `options.tiktok`:
 | `privacy` | One of `privacyOptions` |
 | `allowComment`, `allowDuet`, `allowStitch` | Off unless turned on |
 | `disclose` | Whether the post promotes something; then `yourBrand`, `branded` or both |
+
+### TikTok videos
+
+The `TikTok` platform's `.videos(account, save)` returns the account's posted videos, newest first: `{ id, url, title, description, postedAt, seconds, views, likes, comments, shares }`. Drafts still in the inbox are not posted, so they are not listed. It needs the `video.list` scope, which sign-in asks for but does not require. When it was not granted, the account's `warning` says so. Watch time and retention are not in TikTok's API.
 
 ### Paid promotion labels
 
