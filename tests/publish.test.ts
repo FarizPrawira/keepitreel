@@ -12,6 +12,7 @@ import {
   Provider,
   Publisher,
   PublishError,
+  TikTok,
   TikTokProvider,
   type AccountStore,
   type CheckOptionsArgs,
@@ -296,6 +297,42 @@ describe("permissions", () => {
         stubFetch(token("user.info.basic,video.upload"), reply({ data: { user: { display_name: "Me" } }, error: { code: "ok" } }));
         expect((await tiktok().connect(signIn)).name).toBe("Me");
       });
+    });
+
+    describe("when video.list was not granted", () => {
+      it("should connect, keep the granted scopes, and warn that videos cannot be read", async () => {
+        stubFetch(token("user.info.basic,video.upload,video.publish"), reply({ data: { user: { display_name: "Me" } }, error: { code: "ok" } }));
+        const account = await tiktok().connect(signIn);
+        expect(account.scopes).toEqual(["user.info.basic", "video.upload", "video.publish"]);
+        expect(tiktok().platforms[0]!.warning(account)).toMatch(/video\.list was not allowed/);
+      });
+    });
+
+    it("should ask for video.list at sign-in", () => {
+      const url = new URL(tiktok().authUrl({ redirectUri: "http://localhost:3100/cb", state: "s", verifier: "v" }));
+      expect(url.searchParams.get("scope")).toBe("user.info.basic,video.upload,video.publish,video.list");
+    });
+  });
+
+  describe("when listing TikTok videos", () => {
+    const tiktok = () => new TikTokProvider({ clientKey: "key", clientSecret: "secret" }).platforms[0] as TikTok;
+    const account = { accessToken: "a", refreshToken: "r", expiresAt: Date.now() + 3_600_000, name: "Me" };
+    const video = (id: string) => ({
+      id, share_url: `https://www.tiktok.com/@me/video/${id}`, title: "", video_description: `Caption ${id}`,
+      create_time: 1_762_200_000, duration: 68, view_count: 120, like_count: 9, comment_count: 2, share_count: 1,
+    });
+
+    it("should read every page and give each video's counts", async () => {
+      const fetch = stubFetch(
+        reply({ data: { videos: [video("1")], cursor: 1_762_200_000_000, has_more: true }, error: { code: "ok" } }),
+        reply({ data: { videos: [video("2")], cursor: 0, has_more: false }, error: { code: "ok" } }),
+      );
+      const videos = await tiktok().videos(account, () => {});
+      expect(videos.map((v) => v.id)).toEqual(["1", "2"]);
+      expect(videos[0]).toMatchObject({ url: "https://www.tiktok.com/@me/video/1", description: "Caption 1", seconds: 68, views: 120, likes: 9, comments: 2, shares: 1 });
+      expect(videos[0]!.postedAt).toEqual(new Date(1_762_200_000_000));
+      expect(fetch.mock.calls[0]![0]).toContain("/v2/video/list/?fields=");
+      expect(JSON.parse(fetch.mock.calls[1]![1].body)).toEqual({ max_count: 20, cursor: 1_762_200_000_000 });
     });
   });
 });

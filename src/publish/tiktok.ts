@@ -25,14 +25,35 @@ const MB = 1024 * 1024;
 // the remainder.
 const MAX_SINGLE = 64 * MB;
 const CHUNK = 10 * MB;
-// Drafts need these. video.publish only matters for Direct Posts, so it is not required.
+// Drafts need these. video.publish only matters for Direct Posts and video.list for reading
+// posted videos, so neither is required.
 const REQUIRED_SCOPES = ["user.info.basic", "video.upload"];
+const LIST_SCOPE = "video.list";
+const VIDEO_FIELDS = "id,share_url,title,video_description,create_time,duration,view_count,like_count,comment_count,share_count";
+// TikTok returns at most 20 videos a page.
+const VIDEOS_PER_PAGE = 20;
 
 export interface TikTokAccount {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
   name: string;
+  /** The scopes the user granted. Left out, all are assumed. */
+  scopes?: string[];
+}
+
+/** A video on the account, with its counts as TikTok reports them now. */
+export interface TikTokVideo {
+  id: string;
+  url: string;
+  title: string;
+  description: string;
+  postedAt: Date;
+  seconds: number;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
 }
 
 export interface TikTokOptions {
@@ -88,7 +109,7 @@ export class TikTokProvider extends Provider<TikTokAccount> {
   authUrl({ redirectUri, state, verifier }: AuthUrlArgs): string {
     const params = new URLSearchParams({
       client_key: this.options.clientKey ?? "",
-      scope: [...REQUIRED_SCOPES, "video.publish"].join(","),
+      scope: [...REQUIRED_SCOPES, "video.publish", LIST_SCOPE].join(","),
       response_type: "code",
       redirect_uri: redirectUri,
       state,
@@ -103,9 +124,10 @@ export class TikTokProvider extends Provider<TikTokAccount> {
       method: "POST",
       form: { ...this.app, code, grant_type: "authorization_code", redirect_uri: redirectUri, code_verifier: verifier },
     });
-    requirePermissions("TikTok", REQUIRED_SCOPES, String(t.scope).split(","));
+    const scopes = String(t.scope).split(",");
+    requirePermissions("TikTok", REQUIRED_SCOPES, scopes);
     const info = await api(`${API}/user/info/?fields=display_name`, { token: t.access_token });
-    return { ...tokens(t), name: info.data.user.display_name };
+    return { ...tokens(t), name: info.data.user.display_name, scopes };
   }
 
   /**
@@ -129,6 +151,34 @@ export class TikTok extends Platform<TikTokAccount> {
 
   target(account: TikTokAccount): string {
     return account.name;
+  }
+
+  override warning(account: TikTokAccount): string | null {
+    return account.scopes && !account.scopes.includes(LIST_SCOPE) ? "video.list was not allowed, so posted videos and their counts cannot be read" : null;
+  }
+
+  /**
+   * The account's posted videos, newest first, with their counts now. Drafts still in the
+   * inbox are not posted, so they are not listed. Needs video.list.
+   */
+  async videos(account: TikTokAccount, save: SaveAccount<TikTokAccount>): Promise<TikTokVideo[]> {
+    const token = await this.provider.accessToken(account, save);
+    const videos: TikTokVideo[] = [];
+    let cursor: number | undefined;
+    do {
+      const { data } = await api(`${API}/video/list/?fields=${VIDEO_FIELDS}`, {
+        method: "POST", token, json: { max_count: VIDEOS_PER_PAGE, ...(cursor ? { cursor } : {}) },
+      });
+      for (const v of data.videos ?? []) {
+        videos.push({
+          id: v.id, url: v.share_url, title: v.title ?? "", description: v.video_description ?? "",
+          postedAt: new Date(v.create_time * 1000), seconds: v.duration,
+          views: v.view_count, likes: v.like_count, comments: v.comment_count, shares: v.share_count,
+        });
+      }
+      cursor = data.has_more ? data.cursor : undefined;
+    } while (cursor);
+    return videos;
   }
 
   override async creatorInfo(account: TikTokAccount, save: SaveAccount<TikTokAccount>): Promise<CreatorInfo> {
