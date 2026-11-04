@@ -696,6 +696,33 @@ describe("paid promotion labels", () => {
     });
   });
 
+  describe("when YouTube is given a thumbnail", () => {
+    const youtube = () => new GoogleProvider({ clientId: "id", clientSecret: "secret" }).platforms[0]!;
+    const account = { refreshToken: "r", channel: { id: "UC1", name: "Channel" } };
+    const started = () => new Response(null, { status: 200, headers: { location: "https://upload.example/v1" } });
+    const uploaded = () => reply({ id: "v1", status: { privacyStatus: "public" } });
+    const processed = () => reply({ items: [{ processingDetails: { processingStatus: "succeeded" } }] });
+    const thumbnail = join(dir, "cover.jpg");
+    writeFileSync(thumbnail, Buffer.alloc(16));
+
+    it("should set it once YouTube has processed the video", async () => {
+      const fetch = stubFetch(reply({ access_token: "a" }), started(), uploaded(), processed(), reply({ items: [{}] }));
+      const result = await youtube().upload({ ...args, account, options: { thumbnail } });
+      const [url, init] = fetch.mock.calls[4]!;
+      expect(fetch.mock.calls[3]![0]).toContain("part=processingDetails&id=v1");
+      expect(url).toContain("/thumbnails/set?videoId=v1");
+      expect(init.headers["Content-Type"]).toBe("image/jpeg");
+      expect(result).toEqual({ url: "https://youtube.com/shorts/v1", note: null });
+    });
+
+    it("should still report the video posted when YouTube refuses the thumbnail", async () => {
+      stubFetch(reply({ access_token: "a" }), started(), uploaded(), processed(), reply({ error: { message: "The authenticated user doesn't have permissions to upload and set custom video thumbnails." } }, 403));
+      const result = await youtube().upload({ ...args, account, options: { thumbnail } });
+      expect(result.url).toBe("https://youtube.com/shorts/v1");
+      expect(result.note).toMatch(/thumbnail was not set .*permissions/);
+    });
+  });
+
   describe("when Instagram is asked for the Paid partnership label", () => {
     const instagram = () => new MetaProvider({ appId: "a", appSecret: "s" }).platforms[1]!;
     const account = { page: { id: "1", name: "Page", token: "t" }, instagram: { id: "2", username: "shop" } };

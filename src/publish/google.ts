@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { api, platformError } from "./api.js";
+import { api, platformError, waitFor } from "./api.js";
 import { ifPermitted, requirePermissions } from "./errors.js";
 import {
   Platform,
   Provider,
   type AuthUrlArgs,
   type ConnectArgs,
+  type Log,
   type PostStats,
   type StatsArgs,
   type UploadArgs,
@@ -25,6 +26,8 @@ const MAX_REPORT_IDS = 200;
 // Reports need a start date; any day before the channel's first upload covers its whole life.
 const FIRST_DAY = "2020-01-01";
 const VIDEOS_PER_LIST = 50;
+const VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos";
+const THUMBNAIL_URL = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set";
 
 // The OAuth client is a Desktop app: Google sends the sign-in back to a loopback IP address,
 // not "localhost".
@@ -51,6 +54,11 @@ export interface GoogleOptions {
 export interface YouTubePostOptions {
   /** Ticks "Includes paid promotion", which shows viewers a disclosure. */
   paidPromotion?: boolean;
+  /**
+   * A JPEG or PNG to show instead of the frame YouTube picks, on Shorts too. The channel needs
+   * phone verification (custom thumbnails are an intermediate feature).
+   */
+  thumbnail?: string;
 }
 
 /** Google sign-in (a Desktop OAuth client) for YouTube Shorts. */
@@ -114,8 +122,8 @@ export class YouTubeShorts extends Platform<GoogleAccount> {
     return analyticsGranted(account) ? null : "YouTube Analytics was not allowed, so stats have views, likes and comments only";
   }
 
-  async upload({ account, file, size, text, publishAt, options }: UploadArgs<GoogleAccount>): Promise<UploadResult> {
-    const paid = !!(options as YouTubePostOptions | undefined)?.paidPromotion;
+  async upload({ account, file, size, text, log, publishAt, options }: UploadArgs<GoogleAccount>): Promise<UploadResult> {
+    const { paidPromotion: paid = false, thumbnail } = (options ?? {}) as YouTubePostOptions;
     const accessToken = await this.provider.accessToken(account);
     const { categoryId, language } = this.provider.options;
     // Viewers whose YouTube is set to one of these languages see that title. The description
@@ -159,11 +167,40 @@ export class YouTubeShorts extends Platform<GoogleAccount> {
     // YouTube's docs do not list the paid promotion flag as settable, so the answer shows
     // whether it was kept.
     const unflagged = paid && !video.paidProductPlacementDetails?.hasPaidProductPlacement;
+    const unthumbed = thumbnail ? await this.setThumbnail(video.id, thumbnail, accessToken, log) : null;
     const notes = [
       locked && "YouTube keeps it private until Google audits this app",
       unflagged && "YouTube did not keep the paid promotion flag, so tick it in YouTube Studio",
+      unthumbed,
     ].filter(Boolean);
     return { url: `https://youtube.com/shorts/${video.id}`, note: notes.join(". ") || null };
+  }
+
+  /**
+   * Sets `file` as the video's thumbnail. YouTube keeps one on a Short only once the upload is
+   * processed, so this waits for that first. The video is up by now, so a failure comes back as
+   * a note rather than an error: a retry would upload the video again.
+   */
+  async setThumbnail(videoId: string, file: string, token: string, log: Log): Promise<string | null> {
+    try {
+      log("waiting for YouTube to process the video before setting its thumbnail");
+      await waitFor(async () => {
+        const { items } = await api(`${VIDEOS_URL}?part=processingDetails&id=${videoId}`, { token });
+        const status = items?.[0]?.processingDetails?.processingStatus;
+        if (status === "failed" || status === "terminated") throw new Error(`YouTube could not process the video (${status})`);
+        return status === "succeeded";
+      }, "YouTube to process the video");
+      await api(`${THUMBNAIL_URL}?videoId=${videoId}&uploadType=media`, {
+        method: "POST",
+        token,
+        headers: { "Content-Type": file.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg" },
+        body: readFileSync(file),
+      });
+      log("thumbnail set");
+      return null;
+    } catch (err) {
+      return `The thumbnail was not set (${(err as Error).message}), so YouTube shows a frame it picked`;
+    }
   }
 
   override async stats({ account, urls }: StatsArgs<GoogleAccount>): Promise<Map<string, PostStats>> {

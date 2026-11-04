@@ -540,6 +540,10 @@ Instagram refuses the post when the account has not turned on branded content to
 
 Facebook's Reels API has no branded content field, so label Facebook Reels on Facebook after posting.
 
+### YouTube thumbnail
+
+Pass `options.youtube.thumbnail`, the path of a JPEG or PNG, to show it instead of the frame YouTube picks, on Shorts too. YouTube keeps a Short's thumbnail only once the upload is processed, so the publish waits for that, usually a minute or two. The channel needs phone verification. When YouTube refuses it, the video is still posted and the result's `note` says the thumbnail was not set.
+
 ### Errors and permissions
 
 Errors the app can act on are `PublishError`s with a `code`:
