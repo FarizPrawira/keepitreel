@@ -257,6 +257,53 @@ describe("permissions", () => {
     });
   });
 
+  describe("when given Facebook and Instagram stats", () => {
+    const platform = (name: string) => new MetaProvider({ appId: "a", appSecret: "s" }).platforms.find((p) => p.name === name)!;
+    const account = { page: { id: "p1", name: "Page", token: "t" }, instagram: { id: "ig1", username: "shop" } };
+    const metric = (name: string, value: unknown) => ({ name, values: [{ value }] });
+    const reel = (id: string, plays: number) => ({
+      id,
+      video_insights: { data: [metric("fb_reels_total_plays", plays), metric("post_video_social_actions", { COMMENT: 2, SHARE: 1 }), metric("post_video_avg_time_watched", 4000)] },
+    });
+    const media = (permalink: string, views: number) => ({ permalink, insights: { data: [metric("views", views), metric("saved", 3), metric("ig_reels_avg_watch_time", 6500)] } });
+
+    describe("when the reels are on the first page", () => {
+      it("should read every Facebook reel's insights in one call", async () => {
+        const fetch = stubFetch(reply({ data: [reel("v1", 10), reel("v2", 20)], paging: { next: "https://graph.facebook.com/next" } }));
+        const urls = ["https://www.facebook.com/reel/v1", "https://www.facebook.com/reel/v2"];
+        const stats = await platform("facebook").stats({ account, save: () => {}, urls });
+        expect(stats.get(urls[0]!)).toMatchObject({ views: 10, comments: 2, shares: 1, watchSeconds: 4 });
+        expect(stats.get(urls[1]!)).toMatchObject({ views: 20 });
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(String(fetch.mock.calls[0]![0])).toContain("/p1/video_reels?fields=id,video_insights.metric(");
+      });
+    });
+
+    describe("when a wanted post is on a later page", () => {
+      it("should follow the pages until it is found", async () => {
+        const fetch = stubFetch(
+          reply({ data: [media("https://www.instagram.com/reel/a/", 5)], paging: { next: "https://graph.facebook.com/page2" } }),
+          reply({ data: [media("https://www.instagram.com/reel/b/", 7)] }),
+        );
+        const urls = ["https://www.instagram.com/reel/b/"];
+        const stats = await platform("instagram").stats({ account, save: () => {}, urls });
+        expect([...stats.keys()]).toEqual(urls);
+        expect(stats.get(urls[0]!)).toMatchObject({ views: 7, saves: 3, watchSeconds: 6.5 });
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(String(fetch.mock.calls[0]![0])).toContain("/ig1/media?fields=permalink,insights.metric(");
+      });
+    });
+
+    describe("when insights were not allowed", () => {
+      it("should read nothing", async () => {
+        const fetch = stubFetch();
+        const stats = await platform("facebook").stats({ account: { ...account, permissions: PAGE_PERMISSIONS }, save: () => {}, urls: ["https://www.facebook.com/reel/v1"] });
+        expect(stats.size).toBe(0);
+        expect(fetch).not.toHaveBeenCalled();
+      });
+    });
+  });
+
   describe("when given a Meta sign-in", () => {
     const meta = () => new MetaProvider({ appId: "a", appSecret: "s" });
     const grants = (granted: string[], declined: string[] = []) =>

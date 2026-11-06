@@ -448,6 +448,8 @@ Returns a `Promise` of what the platform's own post screen must show, fetched fr
 
 Returns a `Promise` of a `Map` from each post url to its counts: `views`, `likes`, `comments` and, where the platform reports them, `plays`, `reach`, `shares`, `saves`, `follows`, `watchSeconds`, `engagedViews` and `skipRate`. A count the platform cannot read is `null` or left out, and posts it cannot read are left out. TikTok's `Map` is empty, since a draft has no url; read its posted videos with [`.videos()`](#tiktok-videos).
 
+Facebook and Instagram read the counts from the Page's reels and the account's media, with each post's insights in the same list, so 100 posts cost one call of Meta's hourly limit for the app, and a stats read leaves room for publishing in the same hour.
+
 #### .platform(name), .poster(name)
 
 Return the video platform or image platform with that name, or `undefined`.
