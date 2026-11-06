@@ -162,7 +162,23 @@ export class MetaProvider extends Provider<MetaAccount> {
    */
   async insights(id: string, edge: string, metrics: string[], token: string): Promise<Record<string, Json>> {
     const { data } = await api(`${GRAPH}/${id}/${edge}?metric=${metrics.join(",")}`, { headers: auth(token) });
-    return Object.fromEntries(data.map((m: Json) => [m.name, m.values?.[0]?.value ?? null]));
+    return byName(data);
+  }
+}
+
+const byName = (data: Json[] | undefined): Record<string, Json> => Object.fromEntries((data ?? []).map((m) => [m.name, m.values?.[0]?.value ?? null]));
+
+/**
+ * The items of a Graph API list, page by page, until `done` says every wanted one was seen.
+ * Each item comes with its insights expanded, so a whole page of posts costs one call of Meta's
+ * hourly limit instead of one per post.
+ */
+async function* listPages(url: string, token: string, done: () => boolean): AsyncGenerator<Json> {
+  let next: string | undefined = url;
+  while (next && !done()) {
+    const { data, paging }: Json = await api(next, { headers: auth(token) });
+    yield* data;
+    next = paging?.next;
   }
 }
 
@@ -198,9 +214,14 @@ export class FacebookReels extends Platform<MetaAccount> {
   override async stats({ account, urls }: StatsArgs<MetaAccount>): Promise<Map<string, PostStats>> {
     const counts = new Map<string, PostStats>();
     if (!granted(account, "read_insights")) return counts;
+    // A reel's url ends with its video id.
+    const wanted = new Map(urls.map((url) => [url.split("/").pop() as string, url]));
+    const list = `${GRAPH}/${account.page.id}/video_reels?fields=id,video_insights.metric(${FACEBOOK_METRICS.join(",")})&limit=100`;
     await ifPermitted(async () => {
-      for (const url of urls) {
-        const m = await this.provider.insights(url.split("/").pop() as string, "video_insights", FACEBOOK_METRICS, account.page.token);
+      for await (const reel of listPages(list, account.page.token, () => counts.size === wanted.size)) {
+        const url = wanted.get(reel.id);
+        if (!url) continue;
+        const m = byName(reel.video_insights?.data);
         counts.set(url, {
           views: m.fb_reels_total_plays,
           plays: m.blue_reels_play_count,
@@ -275,19 +296,14 @@ export class InstagramReels extends Platform<MetaAccount> {
     const { token } = account.page;
     const counts = new Map<string, PostStats>();
     if (!granted(account, "instagram_manage_insights")) return counts;
-    // Publishing keeps only the permalink, so the media ids come from the account's media list.
+    // Publishing keeps only the permalink, so posts are matched by it in the account's media list.
     const wanted = new Set(urls);
-    const ids = new Map<string, string>();
-    let next: string | undefined = `${GRAPH}/${instagramId(account)}/media?fields=id,permalink&limit=100`;
-    while (next && ids.size < wanted.size) {
-      const { data, paging }: Json = await api(next, { headers: auth(token) });
-      for (const media of data) if (wanted.has(media.permalink)) ids.set(media.permalink, media.id);
-      next = paging?.next;
-    }
+    const list = `${GRAPH}/${instagramId(account)}/media?fields=permalink,insights.metric(${INSTAGRAM_METRICS.join(",")})&limit=100`;
     await ifPermitted(async () => {
-      for (const [url, id] of ids) {
-        const m = await this.provider.insights(id, "insights", INSTAGRAM_METRICS, token);
-        counts.set(url, {
+      for await (const media of listPages(list, token, () => counts.size === wanted.size)) {
+        if (!wanted.has(media.permalink)) continue;
+        const m = byName(media.insights?.data);
+        counts.set(media.permalink, {
           views: m.views, likes: m.likes, comments: m.comments, shares: m.shares, saves: m.saved, reach: m.reach,
           watchSeconds: seconds(m.ig_reels_avg_watch_time), skipRate: m.reels_skip_rate,
         });
